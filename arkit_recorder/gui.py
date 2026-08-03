@@ -72,6 +72,8 @@ def run_gui(proxy: FaceProxy, config: Config) -> None:
             refresh_clips()
 
     def on_play():
+        if proxy.mode is Mode.PLAYING:
+            return
         selection = clip_list.curselection()
         if not selection:
             messagebox.showinfo("재생", "재생할 클립을 선택하세요.", parent=root)
@@ -119,5 +121,5 @@ def run_gui(proxy: FaceProxy, config: Config) -> None:
         root.after(POLL_MS, poll)
 
     refresh_clips()
-    poll()
+    root.after(0, poll)
     root.mainloop()
