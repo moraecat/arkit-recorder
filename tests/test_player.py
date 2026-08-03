@@ -83,6 +83,28 @@ def test_unparseable_frame_sent_verbatim(tmp_path):
     assert sent == ["no equals sign here"]
 
 
+def test_stop_from_another_thread(tmp_path):
+    import threading
+    import time as real_time
+
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": i * 10, "d": f"a-{i}|trackingStatus-1|=|head#0,0,0|"}
+        for i in range(500)
+    ])
+    sent = []
+    player = ClipPlayer(send=sent.append)  # 실제 시계/슬립 사용
+    player.load(path)
+    thread = threading.Thread(target=player.play)
+    thread.start()
+    real_time.sleep(0.1)
+    player.stop()
+    thread.join(timeout=2.0)
+    assert not thread.is_alive()
+    assert not player.is_playing
+    assert 0 < len(sent) < 500  # 도중에 끊겼음
+
+
 def test_stop_interrupts(tmp_path):
     path = tmp_path / "c.jsonl"
     write_clip(path, [

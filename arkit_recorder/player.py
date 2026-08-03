@@ -47,6 +47,8 @@ class ClipPlayer:
 
     def play(self, loop: bool = False, lead_in_packet: str | None = None) -> None:
         # 블로킹 — 호출자는 별도 스레드에서 실행한다
+        if self.is_playing:
+            return
         if not self._frames:
             return
         self._stop_event.clear()
