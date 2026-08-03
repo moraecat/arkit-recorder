@@ -124,3 +124,60 @@ def test_stop_interrupts(tmp_path):
     player.play()
     # 5번째 송출 직후 stop -> 다음 프레임 진입 전에 중단
     assert len(sent) == 5
+
+
+def test_lead_in_crossfade(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": 0, "d": "smile-100|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 150, "d": "smile-100|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 300, "d": "smile-100|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    clock = FakeClock()
+    sent = []
+    player = make_player(clock, lambda p: sent.append(p), crossfade_live_ms=300)
+    player.load(path)
+    player.play(lead_in_packet="smile-0|trackingStatus-1|=|head#0,0,0|")
+    values = [parse_packet(p).blendshapes["smile"] for p in sent]
+    # t=0ms: 리드인 100%, t=150ms: 50% 블렌드, t=300ms: 크로스페이드 종료(원본)
+    assert values == [0, 50, 100]
+    # trackingStatus는 블렌드 후에도 1 유지
+    assert all(parse_packet(p).blendshapes["trackingStatus"] == 1 for p in sent)
+
+
+def test_no_lead_in_no_crossfade(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [{"t": 0, "d": "smile-100|trackingStatus-1|=|head#0,0,0|"}])
+    clock = FakeClock()
+    sent = []
+    player = make_player(clock, lambda p: sent.append(p), crossfade_live_ms=300)
+    player.load(path)
+    player.play(lead_in_packet=None)  # 라이브 부재: 즉시 원본 송출
+    assert sent == ["smile-100|trackingStatus-1|=|head#0,0,0|"]
+
+
+def test_loop_boundary_crossfade(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": 0, "d": "smile-0|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 200, "d": "smile-0|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 400, "d": "smile-100|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    clock = FakeClock()
+    sent = []
+
+    def send(p):
+        sent.append(p)
+        if len(sent) >= 6:  # 두 바퀴째 끝에서 정지
+            player.stop()
+
+    player = make_player(clock, send, crossfade_loop_ms=500)
+    player.load(path)
+    player.play(loop=True)
+    values = [parse_packet(p).blendshapes["smile"] for p in sent]
+    # 1바퀴 (리드인 없음, 원본 그대로): [0, 0, 100]
+    # 2바퀴 (fade_src = 직전 송출 100, fade 500ms):
+    #   t=0ms:   blend(100, 0, 0.0)   = 100  <- 경계 점프 없음
+    #   t=200ms: blend(100, 0, 0.4)   = 60   <- 클립 값으로 수렴 중
+    #   t=400ms: blend(100, 100, 0.8) = 100
+    assert values == [0, 0, 100, 100, 60, 100]
