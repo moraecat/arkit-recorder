@@ -48,6 +48,39 @@ def parse_packet(text: str) -> Frame | None:
     return frame
 
 
+def lerp_angle(a: float, b: float, t: float) -> float:
+    delta = ((b - a + 180.0) % 360.0) - 180.0
+    return a + delta * t
+
+
+def _lerp(a: float, b: float, t: float) -> float:
+    return a + (b - a) * t
+
+
+def _blend_tuple(a, b, t, angular):
+    if a is None:
+        return b
+    if b is None:
+        return a
+    fn = lerp_angle if angular else _lerp
+    return tuple(fn(x, y, t) for x, y in zip(a, b))
+
+
+def blend_frames(a: Frame, b: Frame, t: float) -> Frame:
+    out = Frame()
+    for name, vb in b.blendshapes.items():
+        va = a.blendshapes.get(name)
+        out.blendshapes[name] = vb if va is None else round(_lerp(va, vb, t))
+    for name, va in a.blendshapes.items():
+        if name not in out.blendshapes:
+            out.blendshapes[name] = va
+    out.head_rotation = _blend_tuple(a.head_rotation, b.head_rotation, t, angular=True)
+    out.head_position = _blend_tuple(a.head_position, b.head_position, t, angular=False)
+    out.left_eye = _blend_tuple(a.left_eye, b.left_eye, t, angular=True)
+    out.right_eye = _blend_tuple(a.right_eye, b.right_eye, t, angular=True)
+    return out
+
+
 def serialize_frame(frame: Frame) -> str:
     parts = [f"{name}-{value}" for name, value in frame.blendshapes.items()]
     tokens = []
