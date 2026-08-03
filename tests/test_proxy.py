@@ -1,3 +1,4 @@
+import json as jsonlib
 import socket
 import time
 from pathlib import Path
@@ -5,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from arkit_recorder.config import Config
+from arkit_recorder.protocol import parse_packet
 from arkit_recorder.proxy import FaceProxy, Mode
 
 PACKET = "a-1|trackingStatus-1|=|head#0,0,0|"
@@ -84,3 +86,71 @@ def test_bind_error_reported(tmp_path):
     assert str(port) in p.bind_error
     blocker.close()
     p.stop()  # 이미 닫힌 소켓에 대해 stop()이 예외 없이 동작하는지 검증
+
+
+def wait_until(predicate, timeout=3.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def make_clip(proxy, entries):
+    proxy.clips_dir.mkdir(parents=True, exist_ok=True)
+    path = proxy.clips_dir / "test.jsonl"
+    path.write_text(
+        "\n".join(jsonlib.dumps(e) for e in entries) + "\n", encoding="utf-8"
+    )
+    return path
+
+
+def test_playback_blocks_live_and_sends_clip(proxy, warudo_socket):
+    # 이 테스트에서는 사전 라이브 수신이 없으므로 리드인 크로스페이드도 없다
+    clip = make_clip(proxy, [
+        {"t": 0, "d": "a-10|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 50, "d": "a-20|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    count = proxy.start_playback(clip, loop=False)
+    assert count == 2
+    assert proxy.mode is Mode.PLAYING
+    send_to_proxy(proxy, "live-99|trackingStatus-1|=|head#0,0,0|")  # 차단돼야 함
+    received = [recv_text(warudo_socket), recv_text(warudo_socket)]
+    values = [parse_packet(p).blendshapes["a"] for p in received]
+    assert values == [10, 20]
+    assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
+
+
+def test_playback_loop_and_stop(proxy, warudo_socket):
+    clip = make_clip(proxy, [
+        {"t": 0, "d": "a-1|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 30, "d": "a-2|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    proxy.start_playback(clip, loop=True)
+    for _ in range(5):  # 루프이므로 클립 길이 이상 수신됨
+        recv_text(warudo_socket)
+    proxy.stop_playback()
+    assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
+
+
+def test_fade_back_to_live(proxy, warudo_socket):
+    # 라이브를 먼저 살려둔다 (0.5초 내 수신 이력 -> 리드인/복귀 페이드 모두 발동)
+    send_to_proxy(proxy, "a-100|trackingStatus-1|=|head#0,0,0|")
+    recv_text(warudo_socket)
+    clip = make_clip(proxy, [
+        {"t": 0, "d": "a-0|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 100, "d": "a-0|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    proxy.start_playback(clip, loop=False)
+    # 리드인 (fade 2000ms): t=0ms -> blend(100, 0, 0.0) = 100
+    first = parse_packet(recv_text(warudo_socket)).blendshapes["a"]
+    assert first == 100
+    # t=100ms -> blend(100, 0, 0.05) = 95
+    second = parse_packet(recv_text(warudo_socket)).blendshapes["a"]
+    assert second == 95
+    assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
+    # 복귀 직후 라이브 패킷은 마지막 재생 프레임(a=95)과 블렌드되어 100 미만
+    send_to_proxy(proxy, "a-100|trackingStatus-1|=|head#0,0,0|")
+    value = parse_packet(recv_text(warudo_socket)).blendshapes["a"]
+    assert 95 <= value < 100  # crossfade_live_ms=2000 창 안

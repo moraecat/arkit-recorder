@@ -147,10 +147,48 @@ class FaceProxy:
                 self._mode = Mode.PASSTHROUGH
             return path
 
-    # -- 재생 조작 (Task 8에서 구현) --------------------------
+    # -- 재생 조작 -------------------------------------------------
 
     def start_playback(self, clip_path: Path, loop: bool) -> int:
-        raise NotImplementedError
+        with self._mode_lock:
+            if self._mode is not Mode.PASSTHROUGH:
+                return 0
+            player = ClipPlayer(
+                send=self._forward,
+                crossfade_live_ms=self._config.crossfade_live_ms,
+                crossfade_loop_ms=self._config.crossfade_loop_ms,
+            )
+            count = player.load(clip_path)
+            if count == 0:
+                return 0
+            lead_in = self._last_live_packet if self.live_available() else None
+            self._player = player
+            self._fade_back_from = None  # 이전 복귀 페이드 취소
+            self._mode = Mode.PLAYING
+        self._player_thread = threading.Thread(
+            target=self._run_player, args=(player, loop, lead_in), daemon=True
+        )
+        self._player_thread.start()
+        return count
+
+    def _run_player(self, player: ClipPlayer, loop: bool, lead_in: str | None) -> None:
+        try:
+            player.play(loop=loop, lead_in_packet=lead_in)
+        finally:
+            self._finish_playback(player)
+
+    def _finish_playback(self, player: ClipPlayer) -> None:
+        with self._mode_lock:
+            if self._mode is Mode.PLAYING:
+                self._mode = Mode.PASSTHROUGH
+            if self.live_available() and player.last_sent_packet:
+                frame = parse_packet(player.last_sent_packet)
+                if frame is not None:
+                    self._fade_back_from = frame
+                    self._fade_back_until = (
+                        time.perf_counter()
+                        + self._config.crossfade_live_ms / 1000.0
+                    )
 
     def stop_playback(self) -> None:
         player = self._player
