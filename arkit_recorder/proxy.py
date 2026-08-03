@@ -35,6 +35,7 @@ class FaceProxy:
         self._player_thread = None
         self._recorder = ClipRecorder(self.clips_dir / "_recording.tmp.jsonl")
         self._player: ClipPlayer | None = None
+        # 수신 스레드만 쓰고 GUI 스레드가 읽음. CPython GIL 원자성에 의존.
         self._recv_times = deque(maxlen=120)
         self._last_recv_time: float | None = None
         self._last_live_packet: str | None = None
@@ -45,7 +46,8 @@ class FaceProxy:
 
     @property
     def mode(self) -> Mode:
-        return self._mode
+        with self._mode_lock:
+            return self._mode
 
     def start(self) -> None:
         try:
@@ -57,6 +59,7 @@ class FaceProxy:
                 f"포트 {self._config.listen_port} 바인드 실패 "
                 f"(다른 프로그램이 사용 중일 수 있음): {e}"
             )
+            self._send_socket.close()
             return
         self._recv_socket = sock
         self.bound_port = sock.getsockname()[1]
@@ -96,10 +99,11 @@ class FaceProxy:
                 return
             packet = data.decode("ascii", errors="replace")
             now = time.perf_counter()
-            self._recv_times.append(now)
+            # _last_recv_time을 먼저 갱신해 쓰기 순서 일관성 보장
             self._last_recv_time = now
+            self._recv_times.append(now)
             self._last_live_packet = packet
-            mode = self._mode
+            mode = self._mode  # GIL 원자 읽기 의존, 핫패스이므로 락 생략
             if mode is Mode.PLAYING:
                 continue  # 재생 중엔 라이브 전달 차단 (수신 통계만 갱신)
             out = self._apply_fade_back(packet, now)

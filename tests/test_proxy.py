@@ -83,3 +83,4 @@ def test_bind_error_reported(tmp_path):
     assert p.bind_error is not None
     assert str(port) in p.bind_error
     blocker.close()
+    p.stop()  # 이미 닫힌 소켓에 대해 stop()이 예외 없이 동작하는지 검증
