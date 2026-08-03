@@ -120,6 +120,10 @@ def test_playback_blocks_live_and_sends_clip(proxy, warudo_socket):
     values = [parse_packet(p).blendshapes["a"] for p in received]
     assert values == [10, 20]
     assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
+    # 차단된 라이브 패킷(live-99)이 뒤늦게라도 전달되지 않았음을 확인
+    warudo_socket.settimeout(0.3)
+    with pytest.raises(socket.timeout):
+        warudo_socket.recvfrom(65535)
 
 
 def test_playback_loop_and_stop(proxy, warudo_socket):

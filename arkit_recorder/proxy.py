@@ -165,6 +165,7 @@ class FaceProxy:
             self._player = player
             self._fade_back_from = None  # 이전 복귀 페이드 취소
             self._mode = Mode.PLAYING
+        # join-less 설계: 참조는 최신 스레드만 유지, 이전 스레드는 stop()으로 스스로 종료됨
         self._player_thread = threading.Thread(
             target=self._run_player, args=(player, loop, lead_in), daemon=True
         )
