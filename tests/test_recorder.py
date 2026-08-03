@@ -41,3 +41,18 @@ def test_discard_removes_tmp(tmp_path):
     rec.discard()
     assert not (tmp_path / "_tmp.jsonl").exists()
     assert not rec.is_recording
+
+
+def test_double_start_guard(tmp_path):
+    # second start() must be a no-op: existing session is preserved
+    rec = ClipRecorder(tmp_path / "_tmp.jsonl")
+    rec.start()
+    rec.feed("a-1|=|head#0,0,0|")
+    rec.start()  # duplicate call — must not discard the ongoing session
+    assert rec.is_recording
+    rec.feed("a-2|=|head#0,0,0|")
+    final = tmp_path / "clip.jsonl"
+    count = rec.stop_and_save(final)
+    assert count == 2
+    lines = final.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2

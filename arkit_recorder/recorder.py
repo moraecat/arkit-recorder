@@ -17,10 +17,13 @@ class ClipRecorder:
 
     @property
     def is_recording(self) -> bool:
-        return self._file is not None
+        with self._lock:
+            return self._file is not None
 
     def start(self) -> None:
         with self._lock:
+            if self._file is not None:
+                return
             self._tmp_path.parent.mkdir(parents=True, exist_ok=True)
             self._file = open(self._tmp_path, "w", encoding="utf-8")
             self._start_time = self._now()
