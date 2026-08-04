@@ -302,3 +302,69 @@ def test_range_without_frames_returns(tmp_path):
     player.play(range_start_ms=500, range_end_ms=900)
     assert sent == []
     assert not player.is_playing
+
+
+def test_set_range_shrink_ends_playback(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": i, "d": f"a-{n}|trackingStatus-1|=|head#0,0,0|"}
+        for n, i in enumerate([0, 100, 200, 300])
+    ])
+    clock = FakeClock()
+    sent = []
+
+    def send(p):
+        sent.append(p)
+        if len(sent) == 2:
+            player.set_range(0, 150)  # 재생 중 끝 축소
+
+    player = make_player(clock, send)
+    player.load(path)
+    player.play()
+    # t=200 프레임에서 150 초과 -> 즉시 종료
+    assert [parse_packet(p).blendshapes["a"] for p in sent] == [0, 1]
+
+
+def test_set_range_extend_continues(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": i, "d": f"a-{n}|trackingStatus-1|=|head#0,0,0|"}
+        for n, i in enumerate([0, 100, 200, 300])
+    ])
+    clock = FakeClock()
+    sent = []
+
+    def send(p):
+        sent.append(p)
+        if len(sent) == 1:
+            player.set_range(0, 300)  # 재생 중 끝 확장
+
+    player = make_player(clock, send)
+    player.load(path)
+    player.play(range_end_ms=100)
+    assert [parse_packet(p).blendshapes["a"] for p in sent] == [0, 1, 2, 3]
+
+
+def test_set_range_applies_to_loop_rewind(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": i, "d": f"a-{n}|trackingStatus-1|=|head#0,0,0|"}
+        for n, i in enumerate([0, 100, 200])
+    ])
+    clock = FakeClock()
+    sent = []
+
+    def send(p):
+        sent.append(p)
+        if len(sent) == 3:
+            player.set_range(100, 200)  # 다음 되감기부터 구간 반영
+        if len(sent) >= 5:
+            player.stop()
+
+    # 루프 크로스페이드를 끄고 되감기 반영만 검증
+    player = make_player(clock, send, crossfade_loop_ms=0)
+    player.load(path)
+    player.play(loop=True)
+    values = [parse_packet(p).blendshapes["a"] for p in sent]
+    # 1바퀴 [0,1,2] -> 되감기(구간 100~200) [1,2] -> 5번째에서 정지
+    assert values == [0, 1, 2, 1, 2]

@@ -29,6 +29,8 @@ class ClipPlayer:
         self.last_sent_packet: str | None = None
         self.skipped_lines = 0
         self.position_ms = 0
+        self._range_start = 0
+        self._range_end: int | None = None
 
     def load(self, path: Path) -> int:
         frames = []
@@ -46,6 +48,11 @@ class ClipPlayer:
         self._frames = frames
         return len(frames)
 
+    def set_range(self, start_ms: int, end_ms: int | None) -> None:
+        # 재생 중 구간 변경 (GUI 단일 작성자, int 대입은 GIL 원자적)
+        self._range_start = start_ms
+        self._range_end = end_ms
+
     def play(
         self,
         loop: bool = False,
@@ -57,30 +64,31 @@ class ClipPlayer:
         # 블로킹 — 호출자는 별도 스레드에서 실행한다
         if self.is_playing:
             return
-        range_frames = [
-            (t, p) for t, p in self._frames
-            if t >= range_start_ms and (range_end_ms is None or t <= range_end_ms)
-        ]
+        self._range_start = range_start_ms
+        self._range_end = range_end_ms
         first_start = max(start_ms, range_start_ms)
-        first_frames = (
-            [(t, p) for t, p in range_frames if t >= first_start]
-            if first_start > 0 else range_frames
+        # 시작 경계만 선필터, 끝 경계는 매 프레임 동적 확인 (실시간 구간 반영)
+        frames = (
+            [(t, p) for t, p in self._frames if t >= first_start]
+            if first_start > 0 else self._frames
         )
-        if not first_frames:
+        if not self._has_playable(frames):
             return
         self._stop_event.clear()
         self.is_playing = True
         try:
             fade_src = parse_packet(lead_in_packet) if lead_in_packet else None
             fade_ms = self._crossfade_live_ms
-            frames = first_frames
-            # base_ms 규칙: 바퀴 시작 경계가 0이면 0, 아니면 그 바퀴 첫 프레임 t
-            base_ms = first_frames[0][0] if first_start > 0 else 0
+            # base_ms 규칙: 바퀴 시작 경계가 0이면 base=0, 아니면 그 바퀴 첫 프레임 t
+            base_ms = frames[0][0] if first_start > 0 else 0
             while not self._stop_event.is_set():
                 start = self._now()
                 for t_ms, packet in frames:
                     if self._stop_event.is_set():
                         return
+                    end = self._range_end
+                    if end is not None and t_ms > end:
+                        break  # 현재 구간 끝 초과 — 바퀴 종료 (축소 즉시 반영)
                     rel_ms = t_ms - base_ms
                     delay = start + rel_ms / 1000.0 - self._now()
                     if delay > 0:
@@ -92,11 +100,15 @@ class ClipPlayer:
                         self.position_ms = t_ms
                 if not loop:
                     return
-                if not range_frames:
-                    return  # 방어 — 현재는 first_frames 가드로 도달 불가
-                # 루프 되감기는 재생 구간 시작부터 (구간 미지정 시 0 = 기존 동작)
-                frames = range_frames
-                base_ms = range_frames[0][0] if range_start_ms > 0 else 0
+                # 되감기: 현재 구간 시작 기준 재계산 (실시간 반영)
+                rewind_start = self._range_start
+                frames = (
+                    [(t, p) for t, p in self._frames if t >= rewind_start]
+                    if rewind_start > 0 else self._frames
+                )
+                if not self._has_playable(frames):
+                    return
+                base_ms = frames[0][0] if rewind_start > 0 else 0
                 fade_src = (
                     parse_packet(self.last_sent_packet)
                     if self.last_sent_packet else None
@@ -104,6 +116,13 @@ class ClipPlayer:
                 fade_ms = self._crossfade_loop_ms
         finally:
             self.is_playing = False
+
+    def _has_playable(self, frames: list[tuple[int, str]]) -> bool:
+        # 시작 필터된 목록의 첫 프레임이 현재 구간 끝 이내인가
+        if not frames:
+            return False
+        end = self._range_end
+        return end is None or frames[0][0] <= end
 
     def _prepare(
         self, packet: str, t_ms: int, fade_src: Frame | None, fade_ms: int

@@ -369,3 +369,29 @@ def test_start_playback_range(proxy, warudo_socket):
     ]
     assert values == [2, 3]
     assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
+
+
+def test_update_playback_range_ignored_when_idle(proxy, warudo_socket):
+    proxy.update_playback_range(0, 100)  # 비재생 -> 무시, 예외 없음
+
+
+def test_update_playback_range_shrinks_live(proxy, warudo_socket):
+    clip = make_clip(proxy, [
+        {"t": i * 100, "d": f"a-{n}|trackingStatus-1|=|head#0,0,0|"}
+        for n, i in enumerate(range(10))
+    ])
+    proxy.start_playback(clip, loop=False)
+    first = parse_packet(recv_text(warudo_socket)).blendshapes["a"]
+    assert first == 0
+    proxy.update_playback_range(0, 150)  # t<=150만 남김
+    remaining = []
+    warudo_socket.settimeout(1.0)
+    try:
+        while True:
+            remaining.append(
+                parse_packet(recv_text(warudo_socket)).blendshapes["a"]
+            )
+    except socket.timeout:
+        pass
+    assert all(v <= 1 for v in remaining)  # t=0,100 프레임(a-0/a-1)만
+    assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)

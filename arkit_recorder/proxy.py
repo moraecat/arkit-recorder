@@ -243,6 +243,14 @@ class FaceProxy:
             return None
         return player.position_ms
 
+    def update_playback_range(self, start_ms: int, end_ms: int | None) -> None:
+        with self._mode_lock:
+            if self._mode is not Mode.PLAYING:
+                return
+            player = self._player
+        if player is not None:
+            player.set_range(start_ms, end_ms)
+
     def _finish_playback(self, player: ClipPlayer) -> None:
         with self._mode_lock:
             if self._mode is Mode.PLAYING:
