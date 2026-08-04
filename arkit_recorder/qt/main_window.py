@@ -160,6 +160,8 @@ class MainWindow(QMainWindow):
     def _on_clip_selected(self, row: int) -> None:
         from ..timeline import blendshape_names
 
+        if self._timeline.is_paused():
+            self._timeline.release_pause(end=True)  # 이전 클립 프레임 고정 해제
         if row < 0 or row >= len(self._clip_infos):
             self._timeline_data = None
             self._timeline.set_data(None)
@@ -218,6 +220,9 @@ class MainWindow(QMainWindow):
             self._timeline.set_curve(self._curve_combo.currentText())
 
     def _on_stop(self) -> None:
+        if self._timeline.is_paused():
+            self._timeline.release_pause(end=True)  # 일시정지 해제 -> 라이브 복귀
+            return
         self._stopped_by_user = True  # 정지 버튼: 플레이헤드 유지 (스펙 §4.3)
         self._proxy.stop_playback()
 
@@ -252,17 +257,22 @@ class MainWindow(QMainWindow):
 
     def _on_play(self) -> None:
         mode = self._proxy.mode
-        if mode is Mode.PLAYING or mode is Mode.SCRUBBING:
+        paused = self._timeline.is_paused()
+        if mode is Mode.PLAYING or (mode is Mode.SCRUBBING and not paused):
             return
         info = self._selected_info()
         if info is None:
             return
+        if paused:
+            self._timeline.release_pause(end=False)  # 재개 — start_playback이 직전환
         start_ms, range_start, range_end = self._playback_range()
         count = self._proxy.start_playback(
             info.path, self._loop_button.isChecked(),
             start_ms=start_ms, range_start_ms=range_start, range_end_ms=range_end,
         )
         if count == 0:
+            if paused:
+                self._proxy.end_scrub()  # 재개 실패 — 일시정지 완전 해제
             QMessageBox.warning(
                 self, "재생", "클립을 재생할 수 없습니다 (빈 파일 또는 녹화 중)."
             )
@@ -323,7 +333,11 @@ class MainWindow(QMainWindow):
                 self._recv_label.setText(f"수신: {hz} Hz")
                 self._recv_label.setStyleSheet("color: #6dd17c;")
         mode = proxy.mode
-        self._mode_label.setText(f"모드: {MODE_NAMES[mode]}")
+        paused = self._timeline.is_paused()
+        if paused:
+            self._mode_label.setText("모드: 일시정지")
+        else:
+            self._mode_label.setText(f"모드: {MODE_NAMES[mode]}")
         self._forward_label.setText(
             f"전달: {self._config.forward_host}:{self._config.forward_port}"
         )
@@ -335,12 +349,12 @@ class MainWindow(QMainWindow):
                 self._timeline.set_playhead(trim_start)
             self._stopped_by_user = False
         self._was_playing = playing
-        busy = mode is Mode.PLAYING or mode is Mode.SCRUBBING
-        self._stop_button.setEnabled(mode is Mode.PLAYING)
+        busy = mode is Mode.PLAYING or (mode is Mode.SCRUBBING and not paused)
+        self._stop_button.setEnabled(mode is Mode.PLAYING or paused)
         self._play_button.setEnabled(not busy)
-        self._record_button.setEnabled(not busy)
-        self._rename_button.setEnabled(not busy)
-        self._delete_button.setEnabled(not busy)
+        self._record_button.setEnabled(not busy and not paused)
+        self._rename_button.setEnabled(not busy and not paused)
+        self._delete_button.setEnabled(not busy and not paused)
         if mode is Mode.RECORDING:
             self._trim_button.setEnabled(False)
         else:

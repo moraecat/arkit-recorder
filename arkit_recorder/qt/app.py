@@ -13,6 +13,7 @@ QPushButton {
 QPushButton:hover { background-color: #3f4147; }
 QPushButton:pressed { background-color: #2a2c30; }
 QPushButton:disabled { color: #6a6a6a; background-color: #26272b; }
+QPushButton:checked { background-color: #3d5a80; border-color: #4f9cf9; }
 QListWidget {
     background-color: #26272b; border: 1px solid #3a3c42; border-radius: 4px;
 }
