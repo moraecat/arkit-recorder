@@ -76,6 +76,10 @@ def test_rename_clip_errors(tmp_path):
         rename_clip(tmp_path, "old", "taken")
     with pytest.raises(ValueError):
         rename_clip(tmp_path, "ghost", "new")
+    with pytest.raises(ValueError):
+        rename_clip(tmp_path, "old", "../evil")
+    with pytest.raises(ValueError):
+        rename_clip(tmp_path, "old", "a/b")
 
 
 def test_delete_clip(tmp_path):

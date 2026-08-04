@@ -79,7 +79,7 @@ def run_gui(proxy: FaceProxy, config: Config, config_path: Path) -> None:
 
     def selected_info():
         selection = clip_list.curselection()
-        if not selection:
+        if not selection or selection[0] >= len(clip_infos):
             messagebox.showinfo("클립", "클립을 선택하세요.", parent=root)
             return None
         return clip_infos[selection[0]]

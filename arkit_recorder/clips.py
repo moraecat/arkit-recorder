@@ -68,6 +68,8 @@ def rename_clip(clips_dir: Path, old_name: str, new_name: str) -> Path:
     new_name = new_name.strip()
     if not new_name:
         raise ValueError("클립 이름이 비어 있습니다")
+    if "/" in new_name or "\\" in new_name or ".." in new_name:
+        raise ValueError("이름에 경로 문자를 사용할 수 없습니다")
     if new_name.startswith("_"):
         raise ValueError("밑줄로 시작하는 이름은 사용할 수 없습니다")
     old_path = clips_dir / (old_name + ".jsonl")
