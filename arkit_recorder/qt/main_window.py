@@ -260,11 +260,13 @@ class MainWindow(QMainWindow):
         paused = self._timeline.is_paused()
         if mode is Mode.PLAYING or (mode is Mode.SCRUBBING and not paused):
             return
-        info = self._selected_info()
-        if info is None:
-            return
         if paused:
             self._timeline.release_pause(end=False)  # 재개 — start_playback이 직전환
+        info = self._selected_info()
+        if info is None:
+            if paused:
+                self._proxy.end_scrub()  # 클립 없음 — 일시정지 완전 해제
+            return
         start_ms, range_start, range_end = self._playback_range()
         count = self._proxy.start_playback(
             info.path, self._loop_button.isChecked(),
