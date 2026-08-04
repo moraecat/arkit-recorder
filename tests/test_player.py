@@ -252,3 +252,53 @@ def test_start_ms_beyond_clip_sends_nothing(tmp_path):
     player.play(start_ms=999)
     assert sent == []
     assert not player.is_playing
+
+
+def test_range_playback_only_sends_range(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": i, "d": f"a-{n}|trackingStatus-1|=|head#0,0,0|"}
+        for n, i in enumerate([0, 100, 200, 300])
+    ])
+    clock = FakeClock()
+    sent = []
+    player = make_player(clock, lambda p: sent.append((clock.time, p)))
+    player.load(path)
+    player.play(range_start_ms=100, range_end_ms=200)
+    assert [parse_packet(p).blendshapes["a"] for _, p in sent] == [1, 2]
+    assert [t for t, _ in sent] == [0.0, pytest.approx(0.1)]  # 구간 첫 프레임 기준 상대
+
+
+def test_range_loop_rewinds_to_range_start(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": i, "d": f"a-{n}|trackingStatus-1|=|head#0,0,0|"}
+        for n, i in enumerate([0, 100, 200, 300])
+    ])
+    clock = FakeClock()
+    sent = []
+
+    def send(p):
+        sent.append(p)
+        if len(sent) >= 4:
+            player.stop()
+
+    # 루프 크로스페이드를 끄고 순수 구간 루프만 검증
+    player = make_player(clock, send, crossfade_loop_ms=0)
+    player.load(path)
+    player.play(loop=True, start_ms=200, range_start_ms=100, range_end_ms=200)
+    values = [parse_packet(p).blendshapes["a"] for p in sent]
+    # 1바퀴: start_ms=200부터 [2], 2바퀴부터 구간 시작(100)부터 [1, 2], ...
+    assert values == [2, 1, 2, 1]
+
+
+def test_range_without_frames_returns(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [{"t": 0, "d": "a-1|trackingStatus-1|=|head#0,0,0|"}])
+    clock = FakeClock()
+    sent = []
+    player = make_player(clock, lambda p: sent.append(p))
+    player.load(path)
+    player.play(range_start_ms=500, range_end_ms=900)
+    assert sent == []
+    assert not player.is_playing

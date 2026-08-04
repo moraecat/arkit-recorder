@@ -51,13 +51,20 @@ class ClipPlayer:
         loop: bool = False,
         lead_in_packet: str | None = None,
         start_ms: int = 0,
+        range_start_ms: int = 0,
+        range_end_ms: int | None = None,
     ) -> None:
         # 블로킹 — 호출자는 별도 스레드에서 실행한다
         if self.is_playing:
             return
+        range_frames = [
+            (t, p) for t, p in self._frames
+            if t >= range_start_ms and (range_end_ms is None or t <= range_end_ms)
+        ]
+        first_start = max(start_ms, range_start_ms)
         first_frames = (
-            [(t, p) for t, p in self._frames if t >= start_ms]
-            if start_ms > 0 else self._frames
+            [(t, p) for t, p in range_frames if t >= first_start]
+            if first_start > 0 else range_frames
         )
         if not first_frames:
             return
@@ -67,7 +74,8 @@ class ClipPlayer:
             fade_src = parse_packet(lead_in_packet) if lead_in_packet else None
             fade_ms = self._crossfade_live_ms
             frames = first_frames
-            base_ms = first_frames[0][0] if start_ms > 0 else 0
+            # base_ms 규칙: 바퀴 시작 경계가 0이면 0, 아니면 그 바퀴 첫 프레임 t
+            base_ms = first_frames[0][0] if first_start > 0 else 0
             while not self._stop_event.is_set():
                 start = self._now()
                 for t_ms, packet in frames:
@@ -84,9 +92,9 @@ class ClipPlayer:
                         self.position_ms = t_ms
                 if not loop:
                     return
-                # 루프 되감기는 항상 클립 전체(0부터)
-                frames = self._frames
-                base_ms = 0
+                # 루프 되감기는 재생 구간 시작부터 (구간 미지정 시 0 = 기존 동작)
+                frames = range_frames
+                base_ms = range_frames[0][0] if range_start_ms > 0 else 0
                 fade_src = (
                     parse_packet(self.last_sent_packet)
                     if self.last_sent_packet else None

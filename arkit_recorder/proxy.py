@@ -184,7 +184,14 @@ class FaceProxy:
 
     # -- 재생 조작 -------------------------------------------------
 
-    def start_playback(self, clip_path: Path, loop: bool, start_ms: int = 0) -> int:
+    def start_playback(
+        self,
+        clip_path: Path,
+        loop: bool,
+        start_ms: int = 0,
+        range_start_ms: int = 0,
+        range_end_ms: int | None = None,
+    ) -> int:
         with self._mode_lock:
             if self._mode is not Mode.PASSTHROUGH:
                 return 0
@@ -202,16 +209,27 @@ class FaceProxy:
             self._mode = Mode.PLAYING
         # join-less 설계: 참조는 최신 스레드만 유지, 이전 스레드는 stop()으로 스스로 종료됨
         self._player_thread = threading.Thread(
-            target=self._run_player, args=(player, loop, lead_in, start_ms), daemon=True
+            target=self._run_player,
+            args=(player, loop, lead_in, start_ms, range_start_ms, range_end_ms),
+            daemon=True,
         )
         self._player_thread.start()
         return count
 
     def _run_player(
-        self, player: ClipPlayer, loop: bool, lead_in: str | None, start_ms: int
+        self,
+        player: ClipPlayer,
+        loop: bool,
+        lead_in: str | None,
+        start_ms: int,
+        range_start_ms: int,
+        range_end_ms: int | None,
     ) -> None:
         try:
-            player.play(loop=loop, lead_in_packet=lead_in, start_ms=start_ms)
+            player.play(
+                loop=loop, lead_in_packet=lead_in, start_ms=start_ms,
+                range_start_ms=range_start_ms, range_end_ms=range_end_ms,
+            )
         finally:
             self._finish_playback(player)
 

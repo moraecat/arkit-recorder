@@ -352,3 +352,20 @@ def test_discard_recording_removes_tmp(proxy, warudo_socket, tmp_path):
     proxy.finish_recording()
     proxy.discard_recording()
     assert not (tmp_path / "clips" / "_recording.tmp.jsonl").exists()
+
+
+def test_start_playback_range(proxy, warudo_socket):
+    clip = make_clip(proxy, [
+        {"t": 0, "d": "a-1|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 50, "d": "a-2|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 100, "d": "a-3|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    count = proxy.start_playback(
+        clip, loop=False, range_start_ms=50, range_end_ms=100
+    )
+    assert count == 3  # 반환값은 전체 로드 프레임 수 (기존 의미)
+    values = [
+        parse_packet(recv_text(warudo_socket)).blendshapes["a"] for _ in range(2)
+    ]
+    assert values == [2, 3]
+    assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
