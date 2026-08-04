@@ -23,3 +23,7 @@ def load_config(path: Path) -> Config:
     config = Config()
     path.write_text(json.dumps(asdict(config), indent=2), encoding="utf-8")
     return config
+
+
+def save_config(path: Path, config: Config) -> None:
+    path.write_text(json.dumps(asdict(config), indent=2), encoding="utf-8")

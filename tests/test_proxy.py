@@ -138,6 +138,103 @@ def test_playback_loop_and_stop(proxy, warudo_socket):
     assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
 
 
+def test_apply_config_forward_change(proxy, warudo_socket):
+    new_warudo = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    new_warudo.bind(("127.0.0.1", 0))
+    new_warudo.settimeout(2.0)
+    try:
+        new = Config(
+            listen_port=proxy.bound_port,  # 현재 바인드 포트 그대로 -> 재시작 없음
+            forward_port=new_warudo.getsockname()[1],
+            crossfade_live_ms=2000,
+        )
+        assert proxy.apply_config(new) is None
+        send_to_proxy(proxy)
+        data, _ = new_warudo.recvfrom(65535)
+        assert data.decode("ascii") == PACKET
+    finally:
+        new_warudo.close()
+
+
+def test_apply_config_crossfade_applies_to_next_playback(proxy, warudo_socket):
+    new = Config(
+        listen_port=proxy.bound_port,
+        forward_port=warudo_socket.getsockname()[1],
+        crossfade_live_ms=700,
+        crossfade_loop_ms=900,
+    )
+    assert proxy.apply_config(new) is None
+    clip = make_clip(proxy, [{"t": 0, "d": "a-1|trackingStatus-1|=|head#0,0,0|"}])
+    assert proxy.start_playback(clip, loop=False) == 1
+    player = proxy._player
+    assert player._crossfade_live_ms == 700
+    assert player._crossfade_loop_ms == 900
+    recv_text(warudo_socket)
+    assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
+
+
+def test_apply_config_listen_port_restart(proxy, warudo_socket):
+    old_bound = proxy.bound_port
+    new = Config(
+        listen_port=0,  # 0 != bound_port -> 재시작 (새 OS 할당 포트)
+        forward_port=warudo_socket.getsockname()[1],
+        crossfade_live_ms=2000,
+    )
+    assert proxy.apply_config(new) is None
+    assert proxy.bind_error is None
+    assert proxy.bound_port is not None
+    send_to_proxy(proxy)  # send_to_proxy는 갱신된 bound_port를 사용
+    assert recv_text(warudo_socket) == PACKET
+    assert old_bound is not None  # (참고용 -- 값 비교는 OS 재할당 가능성 때문에 안 함)
+
+
+def test_apply_config_rejected_while_recording(proxy, warudo_socket):
+    proxy.start_recording()
+    new = Config(
+        listen_port=proxy.bound_port,
+        forward_port=warudo_socket.getsockname()[1],
+        crossfade_live_ms=2000,
+    )
+    error = proxy.apply_config(new)
+    assert error is not None and "패스스루" in error
+    proxy.stop_recording("cleanup")
+
+
+def test_apply_config_rejected_while_playing(proxy, warudo_socket):
+    clip = make_clip(proxy, [
+        {"t": 0, "d": "a-1|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 30, "d": "a-2|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    proxy.start_playback(clip, loop=True)  # 루프로 재생 상태 유지
+    new = Config(
+        listen_port=proxy.bound_port,
+        forward_port=warudo_socket.getsockname()[1],
+        crossfade_live_ms=2000,
+    )
+    error = proxy.apply_config(new)
+    assert error is not None and "패스스루" in error
+    proxy.stop_playback()
+    assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
+
+
+def test_apply_config_rollback_on_bind_failure(proxy, warudo_socket):
+    blocker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    blocker.bind(("0.0.0.0", 0))
+    try:
+        new = Config(
+            listen_port=blocker.getsockname()[1],  # 사용 중인 포트
+            forward_port=warudo_socket.getsockname()[1],
+            crossfade_live_ms=2000,
+        )
+        error = proxy.apply_config(new)
+        assert error is not None and "이전 포트 유지" in error
+        assert proxy.bind_error is None  # 롤백 성공으로 복원됨
+        send_to_proxy(proxy)  # 이전 포트로 계속 수신
+        assert recv_text(warudo_socket) == PACKET
+    finally:
+        blocker.close()
+
+
 def test_fade_back_to_live(proxy, warudo_socket):
     # 라이브를 먼저 살려둔다 (0.5초 내 수신 이력 -> 리드인/복귀 페이드 모두 발동)
     send_to_proxy(proxy, "a-100|trackingStatus-1|=|head#0,0,0|")

@@ -43,6 +43,7 @@ class FaceProxy:
         self._fade_back_until = 0.0
         self.bind_error: str | None = None
         self.bound_port: int | None = None
+        self._recv_stop = threading.Event()  # 리스너 전용 정지 (재시작 시 교체됨)
 
     @property
     def mode(self) -> Mode:
@@ -50,30 +51,45 @@ class FaceProxy:
             return self._mode
 
     def start(self) -> None:
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.settimeout(0.5)
-            sock.bind(("0.0.0.0", self._config.listen_port))
-        except OSError as e:
-            self.bind_error = (
-                f"포트 {self._config.listen_port} 바인드 실패 "
-                f"(다른 프로그램이 사용 중일 수 있음): {e}"
-            )
-            self._send_socket.close()
-            return
-        self._recv_socket = sock
-        self.bound_port = sock.getsockname()[1]
-        self._recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
-        self._recv_thread.start()
+        self._start_listener(self._config.listen_port)
 
     def stop(self) -> None:
         self._stop_event.set()
         self.stop_playback()
-        if self._recv_socket is not None:
-            self._recv_socket.close()
+        self._stop_listener()
         if self._recorder.is_recording:
             self._recorder.discard()
         self._send_socket.close()
+
+    def _start_listener(self, port: int) -> bool:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(0.5)
+            sock.bind(("0.0.0.0", port))
+        except OSError as e:
+            self.bind_error = (
+                f"포트 {port} 바인드 실패 "
+                f"(다른 프로그램이 사용 중일 수 있음): {e}"
+            )
+            return False
+        self.bind_error = None
+        self._recv_socket = sock
+        self.bound_port = sock.getsockname()[1]
+        self._recv_stop = threading.Event()
+        self._recv_thread = threading.Thread(
+            target=self._recv_loop, args=(sock, self._recv_stop), daemon=True
+        )
+        self._recv_thread.start()
+        return True
+
+    def _stop_listener(self) -> None:
+        self._recv_stop.set()
+        if self._recv_socket is not None:
+            self._recv_socket.close()
+            self._recv_socket = None
+        if self._recv_thread is not None:
+            self._recv_thread.join(timeout=2.0)
+            self._recv_thread = None
 
     def receive_stats(self) -> tuple[int, float | None]:
         now = time.perf_counter()
@@ -89,10 +105,10 @@ class FaceProxy:
 
     # -- 수신 스레드 ------------------------------------------
 
-    def _recv_loop(self) -> None:
-        while not self._stop_event.is_set():
+    def _recv_loop(self, sock: socket.socket, stop: threading.Event) -> None:
+        while not (stop.is_set() or self._stop_event.is_set()):
             try:
-                data, _ = self._recv_socket.recvfrom(65535)
+                data, _ = sock.recvfrom(65535)
             except socket.timeout:
                 continue
             except OSError:
@@ -195,3 +211,27 @@ class FaceProxy:
         player = self._player
         if player is not None:
             player.stop()
+
+    # -- 설정 적용 (GUI 스레드에서 호출) ----------------------
+
+    def apply_config(self, new: Config) -> str | None:
+        with self._mode_lock:
+            if self._mode is not Mode.PASSTHROUGH:
+                return "패스스루 상태에서만 설정을 적용할 수 있습니다"
+        if new.listen_port != self.bound_port:
+            old_bound = self.bound_port
+            self._stop_listener()
+            if not self._start_listener(new.listen_port):
+                error = self.bind_error
+                if old_bound is not None:
+                    # 롤백 -- 성공하면 _start_listener가 bind_error를 None으로 복원
+                    self._start_listener(old_bound)
+                return f"수신 포트 변경 실패, 이전 포트 유지: {error}"
+        # 인플레이스 갱신 -- main.py가 같은 Config 인스턴스를 GUI와 공유함
+        self._config.listen_port = new.listen_port
+        self._config.forward_host = new.forward_host
+        self._config.forward_port = new.forward_port
+        self._config.crossfade_live_ms = new.crossfade_live_ms
+        self._config.crossfade_loop_ms = new.crossfade_loop_ms
+        self._forward_addr = (new.forward_host, new.forward_port)
+        return None
