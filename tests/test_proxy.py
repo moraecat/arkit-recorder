@@ -186,6 +186,7 @@ def test_apply_config_listen_port_restart(proxy, warudo_socket):
     send_to_proxy(proxy)  # send_to_proxy는 갱신된 bound_port를 사용
     assert recv_text(warudo_socket) == PACKET
     assert old_bound is not None  # (참고용 -- 값 비교는 OS 재할당 가능성 때문에 안 함)
+    assert proxy._config.listen_port == 0  # config에 사용자가 요청한 원본값(0) 보존
 
 
 def test_apply_config_rejected_while_recording(proxy, warudo_socket):

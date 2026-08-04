@@ -83,7 +83,8 @@ class FaceProxy:
         return True
 
     def _stop_listener(self) -> None:
-        self._recv_stop.set()
+        event = self._recv_stop  # 재시작 경합 대비: 로컬로 캡처 후 set
+        event.set()
         if self._recv_socket is not None:
             self._recv_socket.close()
             self._recv_socket = None
@@ -223,11 +224,17 @@ class FaceProxy:
             self._stop_listener()
             if not self._start_listener(new.listen_port):
                 error = self.bind_error
-                if old_bound is not None:
-                    # 롤백 -- 성공하면 _start_listener가 bind_error를 None으로 복원
-                    self._start_listener(old_bound)
-                return f"수신 포트 변경 실패, 이전 포트 유지: {error}"
+                if old_bound is not None and self._start_listener(old_bound):
+                    # 롤백 성공 -- _start_listener가 bind_error를 None으로 복원
+                    return f"수신 포트 변경 실패, 이전 포트 유지: {error}"
+                self.bound_port = None
+                return (
+                    f"수신 포트 변경 실패, 이전 포트 복구도 실패 "
+                    f"(수신이 중단됨, 설정에서 포트를 다시 지정하세요): {error}"
+                )
         # 인플레이스 갱신 -- main.py가 같은 Config 인스턴스를 GUI와 공유함
+        # config에는 사용자가 요청한 값을 저장한다 (0이면 매 시작마다 OS 할당 --
+        # GUI 다이얼로그는 1~65535만 허용하므로 실사용에서 0은 테스트 전용)
         self._config.listen_port = new.listen_port
         self._config.forward_host = new.forward_host
         self._config.forward_port = new.forward_port
