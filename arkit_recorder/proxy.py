@@ -195,7 +195,7 @@ class FaceProxy:
         return count
 
     def _run_player(
-        self, player: ClipPlayer, loop: bool, lead_in: str | None, start_ms: int = 0
+        self, player: ClipPlayer, loop: bool, lead_in: str | None, start_ms: int
     ) -> None:
         try:
             player.play(loop=loop, lead_in_packet=lead_in, start_ms=start_ms)
@@ -203,6 +203,7 @@ class FaceProxy:
             self._finish_playback(player)
 
     def playback_position_ms(self) -> int | None:
+        # SCRUBBING은 의도적으로 None — 스크럽 중 플레이헤드는 위젯이 직접 관리
         with self._mode_lock:
             if self._mode is not Mode.PLAYING:
                 return None

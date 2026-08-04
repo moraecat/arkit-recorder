@@ -26,7 +26,6 @@ class TimelineWidget(QWidget):
         self._proxy = proxy
         self._data: TimelineData | None = None
         self._curve: list[tuple[int, float]] = []
-        self._curve_max = 1.0
         self._playhead_ms = 0
         self._trim_start = 0
         self._trim_end = 0
@@ -53,7 +52,6 @@ class TimelineWidget(QWidget):
             self._curve = [
                 (t, float(v)) for t, v in blendshape_curve(self._data, name)
             ]
-        self._curve_max = max((v for _, v in self._curve), default=0.0) or 1.0
         self.update()
 
     def set_live_wave(self, wave: list[tuple[int, float]] | None) -> None:
@@ -118,6 +116,8 @@ class TimelineWidget(QWidget):
         step = 1000
         while span / step > 20:  # 눈금이 20개를 넘으면 간격 확대
             step *= 5
+            if step <= 0:
+                break
         ms = 0
         while ms <= span:
             x = self._ms_to_x(ms)

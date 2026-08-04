@@ -172,6 +172,11 @@ class MainWindow(QMainWindow):
             name, ok = QInputDialog.getText(self, "클립 저장", "클립 이름:")
             if not ok or not name.strip():
                 return  # 이름 없이는 계속 녹화 유지
+            try:
+                validate_clip_name(self._proxy.clips_dir, name)
+            except ValueError as e:
+                QMessageBox.warning(self, "클립 저장", str(e))
+                return  # 녹화 유지 — 다시 시도 가능
             self._proxy.stop_recording(name.strip())
             self._record_button.setText("녹화 시작")
             self._refresh_clips()
