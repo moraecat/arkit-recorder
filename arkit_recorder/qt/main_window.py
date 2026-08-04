@@ -149,7 +149,8 @@ class MainWindow(QMainWindow):
         return 0  # Task 7이 플레이헤드 위치로 교체
 
     def _on_play(self) -> None:
-        if self._proxy.mode is Mode.PLAYING:
+        mode = self._proxy.mode
+        if mode is Mode.PLAYING or mode is Mode.SCRUBBING:
             return
         info = self._selected_info()
         if info is None:
@@ -164,7 +165,8 @@ class MainWindow(QMainWindow):
             )
 
     def _on_rename(self) -> None:
-        if self._proxy.mode is Mode.PLAYING:
+        mode = self._proxy.mode
+        if mode is Mode.PLAYING or mode is Mode.SCRUBBING:
             return
         info = self._selected_info()
         if info is None:
@@ -172,7 +174,7 @@ class MainWindow(QMainWindow):
         name, ok = QInputDialog.getText(
             self, "이름 변경", "새 이름:", text=info.name
         )
-        if not ok or not name:
+        if not ok or not name.strip():
             return
         try:
             rename_clip(self._proxy.clips_dir, info.name, name)
@@ -182,7 +184,8 @@ class MainWindow(QMainWindow):
         self._refresh_clips()
 
     def _on_delete(self) -> None:
-        if self._proxy.mode is Mode.PLAYING:
+        mode = self._proxy.mode
+        if mode is Mode.PLAYING or mode is Mode.SCRUBBING:
             return
         info = self._selected_info()
         if info is None:
