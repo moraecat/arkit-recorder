@@ -5,8 +5,8 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QHBoxLayout, QInputDialog, QLabel, QListWidget,
-    QMainWindow, QMessageBox, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QHBoxLayout, QInputDialog, QLabel, QListWidget,
+    QMainWindow, QMessageBox, QPushButton, QStyle, QVBoxLayout, QWidget,
 )
 
 from ..clips import delete_clip, list_clips, rename_clip, validate_clip_name
@@ -34,6 +34,8 @@ class MainWindow(QMainWindow):
         self._config_path = config_path
         self._clip_infos = []
         self._timeline_data = None
+        self._was_playing = False
+        self._stopped_by_user = False
         self.setWindowTitle("ARKit Recorder")
         self.resize(900, 480)
         self._build_ui()
@@ -79,17 +81,6 @@ class MainWindow(QMainWindow):
         self._record_button = QPushButton("녹화 시작")
         self._record_button.clicked.connect(self._on_record)
         left.addWidget(self._record_button)
-        play_row = QHBoxLayout()
-        self._play_button = QPushButton("재생")
-        self._play_button.clicked.connect(self._on_play)
-        self._stop_button = QPushButton("정지")
-        self._stop_button.setEnabled(False)
-        self._stop_button.clicked.connect(self._proxy.stop_playback)
-        play_row.addWidget(self._play_button)
-        play_row.addWidget(self._stop_button)
-        left.addLayout(play_row)
-        self._loop_check = QCheckBox("루프 재생")
-        left.addWidget(self._loop_check)
         manage_row = QHBoxLayout()
         self._rename_button = QPushButton("이름 변경")
         self._rename_button.clicked.connect(self._on_rename)
@@ -116,6 +107,31 @@ class MainWindow(QMainWindow):
         self._right_panel.addLayout(curve_row)
         self._timeline = TimelineWidget(self._proxy)
         self._right_panel.addWidget(self._timeline, 1)
+        # 음악 플레이어식 컨트롤 바 (스펙 §5) — 타임라인 아래 가운데 정렬
+        controls = QHBoxLayout()
+        controls.addStretch(1)
+        style = self.style()
+        self._play_button = QPushButton("재생")
+        self._play_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
+        )
+        self._play_button.clicked.connect(self._on_play)
+        self._stop_button = QPushButton("정지")
+        self._stop_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaStop)
+        )
+        self._stop_button.setEnabled(False)
+        self._stop_button.clicked.connect(self._on_stop)
+        self._loop_button = QPushButton("루프")
+        self._loop_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        )
+        self._loop_button.setCheckable(True)
+        controls.addWidget(self._play_button)
+        controls.addWidget(self._stop_button)
+        controls.addWidget(self._loop_button)
+        controls.addStretch(1)
+        self._right_panel.addLayout(controls)
         right_widget = QWidget()
         right_widget.setLayout(self._right_panel)
         body.addWidget(right_widget, 1)
@@ -201,13 +217,18 @@ class MainWindow(QMainWindow):
         else:
             self._timeline.set_curve(self._curve_combo.currentText())
 
-    def _start_ms_for_play(self) -> int:
+    def _on_stop(self) -> None:
+        self._stopped_by_user = True  # 정지 버튼: 플레이헤드 유지 (스펙 §4.3)
+        self._proxy.stop_playback()
+
+    def _playback_range(self) -> tuple[int, int, int | None]:
+        # (start_ms, range_start_ms, range_end_ms) — 트림 구간이 재생 범위 (스펙 §4.3)
         if self._timeline_data is None:
-            return 0
+            return 0, 0, None
+        trim_start, trim_end = self._timeline.trim_range()
         playhead = self._timeline.playhead_ms()
-        if 0 < playhead < self._timeline_data.duration_ms:
-            return playhead
-        return 0
+        start = playhead if trim_start <= playhead < trim_end else trim_start
+        return start, trim_start, trim_end
 
     def _on_save_trim(self) -> None:
         if self._timeline_data is None:
@@ -236,9 +257,10 @@ class MainWindow(QMainWindow):
         info = self._selected_info()
         if info is None:
             return
+        start_ms, range_start, range_end = self._playback_range()
         count = self._proxy.start_playback(
-            info.path, self._loop_check.isChecked(),
-            start_ms=self._start_ms_for_play(),
+            info.path, self._loop_button.isChecked(),
+            start_ms=start_ms, range_start_ms=range_start, range_end_ms=range_end,
         )
         if count == 0:
             QMessageBox.warning(
@@ -305,6 +327,14 @@ class MainWindow(QMainWindow):
         self._forward_label.setText(
             f"전달: {self._config.forward_host}:{self._config.forward_port}"
         )
+        playing = mode is Mode.PLAYING
+        if self._was_playing and not playing:
+            # 재생 종료 전이 — 자연 종료면 구간 시작으로 리셋 (스펙 §4.3)
+            if not self._stopped_by_user:
+                trim_start, _ = self._timeline.trim_range()
+                self._timeline.set_playhead(trim_start)
+            self._stopped_by_user = False
+        self._was_playing = playing
         busy = mode is Mode.PLAYING or mode is Mode.SCRUBBING
         self._stop_button.setEnabled(mode is Mode.PLAYING)
         self._play_button.setEnabled(not busy)
