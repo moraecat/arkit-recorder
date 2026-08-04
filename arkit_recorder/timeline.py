@@ -57,6 +57,7 @@ def activity_curve(data: TimelineData) -> list[tuple[int, float]]:
     return curve
 
 
+# 값 타입 int는 protocol.parse_packet이 정수로 파싱함을 전제로 한다
 def blendshape_curve(data: TimelineData, name: str) -> list[tuple[int, int]]:
     curve: list[tuple[int, int]] = []
     for t_ms, packet in data.frames:

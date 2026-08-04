@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from arkit_recorder.protocol import parse_packet
@@ -19,12 +17,6 @@ from arkit_recorder.timeline import (
 def P(**shapes):
     body = "|".join(f"{k}-{v}" for k, v in shapes.items())
     return body + "|trackingStatus-1|=|head#0,0,0|"
-
-
-def write_clip(path, entries):
-    path.write_text(
-        "\n".join(json.dumps(e) for e in entries) + "\n", encoding="utf-8"
-    )
 
 
 def make_data(pairs):
