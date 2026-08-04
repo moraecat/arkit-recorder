@@ -44,6 +44,7 @@ class ClipRecorder:
             t_ms = round((self._now() - self._start_time) * 1000)
             self._file.write(json.dumps({"t": t_ms, "d": packet}) + "\n")
             self.frame_count += 1
+            # 파싱 비용은 60fps 텍스트 패킷 기준 수십 us 수준이라 수신 락 안에서 수용
             frame = parse_packet(packet)
             if frame is None:
                 self._wave.append((t_ms, 0.0))
@@ -59,7 +60,10 @@ class ClipRecorder:
             self._file = None
             final_path.parent.mkdir(parents=True, exist_ok=True)
             self._tmp_path.replace(final_path)
-            return self.frame_count
+            count = self.frame_count
+            self._wave.clear()
+            self._prev_frame = None
+            return count
 
     def discard(self) -> None:
         with self._lock:
@@ -67,6 +71,8 @@ class ClipRecorder:
                 self._file.close()
                 self._file = None
             self._tmp_path.unlink(missing_ok=True)
+            self._wave.clear()
+            self._prev_frame = None
 
     def live_wave(self) -> list[tuple[int, float]]:
         with self._lock:
