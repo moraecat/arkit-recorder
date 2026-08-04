@@ -328,3 +328,27 @@ def test_end_scrub_without_live_no_fade(proxy, warudo_socket):
     proxy.end_scrub()
     assert proxy.mode is Mode.PASSTHROUGH
     assert proxy._fade_back_from is None  # 라이브 부재 -> 페이드 미준비
+
+
+def test_finish_recording_stops_immediately(proxy, warudo_socket, tmp_path):
+    proxy.start_recording()
+    send_to_proxy(proxy)
+    recv_text(warudo_socket)
+    time.sleep(0.1)
+    proxy.finish_recording()
+    assert proxy.mode is Mode.PASSTHROUGH
+    send_to_proxy(proxy)  # 정지 후 패킷 -- 기록되지 않고 전달만
+    assert recv_text(warudo_socket) == PACKET
+    path = proxy.save_recording("late_name")
+    assert path == tmp_path / "clips" / "late_name.jsonl"
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_discard_recording_removes_tmp(proxy, warudo_socket, tmp_path):
+    proxy.start_recording()
+    send_to_proxy(proxy)
+    recv_text(warudo_socket)
+    time.sleep(0.1)
+    proxy.finish_recording()
+    proxy.discard_recording()
+    assert not (tmp_path / "clips" / "_recording.tmp.jsonl").exists()

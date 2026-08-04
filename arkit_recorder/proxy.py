@@ -161,13 +161,24 @@ class FaceProxy:
             self._recorder.start()
             self._mode = Mode.RECORDING
 
-    def stop_recording(self, name: str) -> Path:
+    def finish_recording(self) -> None:
         with self._mode_lock:
-            path = self.clips_dir / (name + ".jsonl")
-            self._recorder.stop_and_save(path)
-            if self._mode is Mode.RECORDING:
-                self._mode = Mode.PASSTHROUGH
-            return path
+            if self._mode is not Mode.RECORDING:
+                return
+            self._recorder.finish()
+            self._mode = Mode.PASSTHROUGH
+
+    def save_recording(self, name: str) -> Path:
+        path = self.clips_dir / (name + ".jsonl")
+        self._recorder.save_to(path)
+        return path
+
+    def discard_recording(self) -> None:
+        self._recorder.discard()
+
+    def stop_recording(self, name: str) -> Path:
+        self.finish_recording()
+        return self.save_recording(name)
 
     # -- 재생 조작 -------------------------------------------------
 

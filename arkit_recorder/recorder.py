@@ -52,18 +52,31 @@ class ClipRecorder:
                 self._wave.append((t_ms, frame_activity(self._prev_frame, frame)))
                 self._prev_frame = frame
 
-    def stop_and_save(self, final_path: Path) -> int:
+    def finish(self) -> None:
         with self._lock:
             if self._file is None:
-                return 0
+                return
             self._file.close()
             self._file = None
+
+    def save_to(self, final_path: Path) -> int:
+        with self._lock:
+            if self._file is not None:
+                return 0  # finish 전 호출 방어 -- 녹화 상태를 깨지 않는다
+            if not self._tmp_path.exists():
+                return 0
             final_path.parent.mkdir(parents=True, exist_ok=True)
             self._tmp_path.replace(final_path)
             count = self.frame_count
             self._wave.clear()
             self._prev_frame = None
             return count
+
+    def stop_and_save(self, final_path: Path) -> int:
+        if not self.is_recording:
+            return 0
+        self.finish()
+        return self.save_to(final_path)
 
     def discard(self) -> None:
         with self._lock:

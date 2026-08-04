@@ -82,3 +82,37 @@ def test_live_wave_resets_on_start(tmp_path):
     rec.start()
     assert rec.live_wave() == []
     rec.discard()
+
+
+def test_finish_keeps_tmp_and_ignores_feed(tmp_path):
+    rec = ClipRecorder(tmp_path / "_tmp.jsonl")
+    rec.start()
+    rec.feed("a-1|trackingStatus-1|=|head#0,0,0|")
+    rec.finish()
+    assert not rec.is_recording
+    assert (tmp_path / "_tmp.jsonl").exists()
+    rec.feed("a-2|trackingStatus-1|=|head#0,0,0|")  # 무시돼야 함
+    assert rec.frame_count == 1
+    final = tmp_path / "kept.jsonl"
+    assert rec.save_to(final) == 1
+    assert final.exists()
+    assert not (tmp_path / "_tmp.jsonl").exists()
+
+
+def test_save_to_guards(tmp_path):
+    rec = ClipRecorder(tmp_path / "_tmp.jsonl")
+    assert rec.save_to(tmp_path / "none.jsonl") == 0  # tmp 부재
+    rec.start()
+    rec.feed("a-1|trackingStatus-1|=|head#0,0,0|")
+    assert rec.save_to(tmp_path / "early.jsonl") == 0  # finish 전 -- 방어
+    assert rec.is_recording  # 녹화 상태 유지
+    rec.discard()
+
+
+def test_discard_after_finish_removes_tmp(tmp_path):
+    rec = ClipRecorder(tmp_path / "_tmp.jsonl")
+    rec.start()
+    rec.feed("a-1|trackingStatus-1|=|head#0,0,0|")
+    rec.finish()
+    rec.discard()
+    assert not (tmp_path / "_tmp.jsonl").exists()
