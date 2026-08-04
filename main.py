@@ -14,11 +14,12 @@ else:
 
 
 def main() -> None:
-    config = load_config(BASE_DIR / "config.json")
+    config_path = BASE_DIR / "config.json"
+    config = load_config(config_path)
     proxy = FaceProxy(config, BASE_DIR)
     proxy.start()
     try:
-        run_gui(proxy, config)
+        run_gui(proxy, config, config_path)
     finally:
         proxy.stop()
 

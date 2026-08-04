@@ -2,16 +2,18 @@
 from __future__ import annotations
 
 import tkinter as tk
+from pathlib import Path
 from tkinter import messagebox, simpledialog
 
 from .clips import list_clips, rename_clip, delete_clip
 from .config import Config
 from .proxy import FaceProxy, Mode
+from .settings_dialog import open_settings_dialog
 
 POLL_MS = 200
 
 
-def run_gui(proxy: FaceProxy, config: Config) -> None:
+def run_gui(proxy: FaceProxy, config: Config, config_path: Path) -> None:
     root = tk.Tk()
     root.title("ARKit Recorder")
     root.geometry("380x460")
@@ -29,6 +31,12 @@ def run_gui(proxy: FaceProxy, config: Config) -> None:
     forward_label.pack(fill="x", padx=6)
     mode_label = tk.Label(status_frame, text="모드: -", anchor="w")
     mode_label.pack(fill="x", padx=6, pady=(0, 4))
+    settings_button = tk.Button(
+        status_frame,
+        text="설정",
+        command=lambda: open_settings_dialog(root, proxy, config, config_path),
+    )
+    settings_button.pack(fill="x", padx=6, pady=(0, 4))
 
     # ── 녹화부 ──
     record_frame = tk.LabelFrame(root, text="녹화")
@@ -154,6 +162,9 @@ def run_gui(proxy: FaceProxy, config: Config) -> None:
                 recv_label.config(text=f"수신: 끊김 ({since:.1f}초 전)", fg="red")
             else:
                 recv_label.config(text=f"수신: {hz} Hz", fg="green")
+        forward_label.config(
+            text=f"전달: {config.forward_host}:{config.forward_port}"
+        )
         mode_names = {
             Mode.PASSTHROUGH: "패스스루",
             Mode.RECORDING: "녹화 중",
