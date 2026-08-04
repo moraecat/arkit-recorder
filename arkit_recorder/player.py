@@ -98,6 +98,7 @@ class ClipPlayer:
                         self._send(out)
                         self.last_sent_packet = out
                         self.position_ms = t_ms
+                # 구간 끝 break 포함 모든 바퀴 종료가 여기로 온다 (비루프면 재생 종료)
                 if not loop:
                     return
                 # 되감기: 현재 구간 시작 기준 재계산 (실시간 반영)
@@ -119,6 +120,7 @@ class ClipPlayer:
 
     def _has_playable(self, frames: list[tuple[int, str]]) -> bool:
         # 시작 필터된 목록의 첫 프레임이 현재 구간 끝 이내인가
+        # 판단 직후 set_range가 끼어들 수 있으나(GUI 단일 작성자) 첫 프레임의 동적 end 확인이 최종 방어
         if not frames:
             return False
         end = self._range_end
