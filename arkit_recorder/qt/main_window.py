@@ -169,17 +169,27 @@ class MainWindow(QMainWindow):
             self._proxy.start_recording()
             self._record_button.setText("녹화 정지 (저장)")
         elif mode is Mode.RECORDING:
-            name, ok = QInputDialog.getText(self, "클립 저장", "클립 이름:")
-            if not ok or not name.strip():
-                return  # 이름 없이는 계속 녹화 유지
-            try:
-                validate_clip_name(self._proxy.clips_dir, name)
-            except ValueError as e:
-                QMessageBox.warning(self, "클립 저장", str(e))
-                return  # 녹화 유지 — 다시 시도 가능
-            self._proxy.stop_recording(name.strip())
+            # 버튼 시점에 즉시 정지 (스펙 §2.3) — 이름 입력 중 프레임이 쌓이지 않게
+            self._proxy.finish_recording()
             self._record_button.setText("녹화 시작")
-            self._refresh_clips()
+            while True:
+                name, ok = QInputDialog.getText(self, "클립 저장", "클립 이름:")
+                if ok and name.strip():
+                    try:
+                        validate_clip_name(self._proxy.clips_dir, name)
+                    except ValueError as e:
+                        QMessageBox.warning(self, "클립 저장", str(e))
+                        continue  # 이름 재입력
+                    self._proxy.save_recording(name.strip())
+                    self._refresh_clips()
+                    return
+                answer = QMessageBox.question(
+                    self, "클립 저장", "녹화를 저장하지 않고 버릴까요?"
+                )
+                if answer == QMessageBox.StandardButton.Yes:
+                    self._proxy.discard_recording()
+                    return
+                # 아니오: 이름 다이얼로그 재표시
 
     def _on_curve_changed(self, index: int) -> None:
         if index <= 0:

@@ -1,7 +1,7 @@
 # arkit_recorder/qt/timeline_widget.py
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
@@ -33,6 +33,10 @@ class TimelineWidget(QWidget):
         self._dragging: str | None = None  # scrub | trim_start | trim_end
         self._last_scrub_index = -1
         self.setMinimumHeight(180)
+        # 스크럽 홀드 킵얼라이브 — Warudo 0.5초 무수신 트래킹 끊김 방지 (스펙 §3)
+        self._keepalive = QTimer(self)
+        self._keepalive.setInterval(100)
+        self._keepalive.timeout.connect(self._resend_scrub)
 
     # -- 외부 API -------------------------------------------
 
@@ -183,6 +187,7 @@ class TimelineWidget(QWidget):
         if self._proxy.begin_scrub():
             self._dragging = "scrub"
             self._last_scrub_index = -1
+            self._keepalive.start()
             self._scrub_to(x)
 
     def mouseMoveEvent(self, event) -> None:
@@ -198,6 +203,7 @@ class TimelineWidget(QWidget):
 
     def mouseReleaseEvent(self, event) -> None:
         if self._dragging == "scrub":
+            self._keepalive.stop()
             self._proxy.end_scrub()
         self._dragging = None
 
@@ -212,3 +218,11 @@ class TimelineWidget(QWidget):
             self._proxy.scrub_frame(packet)
             self._playhead_ms = t_ms
             self.update()
+
+    def _resend_scrub(self) -> None:
+        # 마우스가 멈춰 있어도 현재 프레임을 재전송 (내용이 같아도 Warudo는 수신 시각 갱신)
+        if self._dragging != "scrub" or self._data is None:
+            return
+        if self._last_scrub_index < 0 or self._last_scrub_index >= len(self._data.frames):
+            return
+        self._proxy.scrub_frame(self._data.frames[self._last_scrub_index][1])
