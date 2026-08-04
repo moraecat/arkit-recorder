@@ -169,6 +169,8 @@ class FaceProxy:
             self._mode = Mode.PASSTHROUGH
 
     def save_recording(self, name: str) -> Path:
+        # finish_recording 직후 호출 전제(tmp 존재 보장) — save_to가 0을 반환하는
+        # 경로(tmp 부재)는 이 흐름에서 발생하지 않으므로 반환값은 확인하지 않음
         path = self.clips_dir / (name + ".jsonl")
         self._recorder.save_to(path)
         return path

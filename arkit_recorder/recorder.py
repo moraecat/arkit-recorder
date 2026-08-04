@@ -73,6 +73,8 @@ class ClipRecorder:
             return count
 
     def stop_and_save(self, final_path: Path) -> int:
+        # 단일 호출자(GUI 스레드) 가정 — 검사와 finish 사이 락 해제 구간은
+        # finish/discard가 멱등이므로 안전
         if not self.is_recording:
             return 0
         self.finish()
