@@ -4,6 +4,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, simpledialog
 
+from .clips import list_clips, rename_clip, delete_clip
 from .config import Config
 from .proxy import FaceProxy, Mode
 
@@ -49,13 +50,31 @@ def run_gui(proxy: FaceProxy, config: Config) -> None:
     play_button.pack(side="left", expand=True, fill="x")
     stop_button = tk.Button(button_row, text="정지", state="disabled")
     stop_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
+    manage_row = tk.Frame(play_frame)
+    manage_row.pack(fill="x", padx=6, pady=(0, 4))
+    rename_button = tk.Button(manage_row, text="이름 변경")
+    rename_button.pack(side="left", expand=True, fill="x")
+    delete_button = tk.Button(manage_row, text="삭제")
+    delete_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
+
+    clip_infos = []
 
     def refresh_clips():
+        nonlocal clip_infos
+        clip_infos = list_clips(proxy.clips_dir)
         clip_list.delete(0, "end")
-        if proxy.clips_dir.exists():
-            for path in sorted(proxy.clips_dir.glob("*.jsonl")):
-                if not path.name.startswith("_"):
-                    clip_list.insert("end", path.stem)
+        for info in clip_infos:
+            if info.duration_s is None:
+                clip_list.insert("end", f"{info.name} — ?")
+            else:
+                clip_list.insert("end", f"{info.name} — {info.duration_s:.1f}초")
+
+    def selected_info():
+        selection = clip_list.curselection()
+        if not selection:
+            messagebox.showinfo("클립", "클립을 선택하세요.", parent=root)
+            return None
+        return clip_infos[selection[0]]
 
     def on_record():
         if proxy.mode is Mode.PASSTHROUGH:
@@ -74,14 +93,10 @@ def run_gui(proxy: FaceProxy, config: Config) -> None:
     def on_play():
         if proxy.mode is Mode.PLAYING:
             return
-        selection = clip_list.curselection()
-        if not selection:
-            messagebox.showinfo("재생", "재생할 클립을 선택하세요.", parent=root)
+        info = selected_info()
+        if info is None:
             return
-        name = clip_list.get(selection[0])
-        count = proxy.start_playback(
-            proxy.clips_dir / (name + ".jsonl"), loop_var.get()
-        )
+        count = proxy.start_playback(info.path, loop_var.get())
         if count == 0:
             messagebox.showwarning(
                 "재생", "클립을 재생할 수 없습니다 (빈 파일 또는 녹화 중).",
@@ -91,9 +106,42 @@ def run_gui(proxy: FaceProxy, config: Config) -> None:
     def on_stop():
         proxy.stop_playback()
 
+    def on_rename():
+        if proxy.mode is Mode.PLAYING:
+            return
+        info = selected_info()
+        if info is None:
+            return
+        new_name = simpledialog.askstring(
+            "이름 변경", "새 이름:", initialvalue=info.name, parent=root
+        )
+        if not new_name:
+            return
+        try:
+            rename_clip(proxy.clips_dir, info.name, new_name)
+        except ValueError as e:
+            messagebox.showwarning("이름 변경", str(e), parent=root)
+            return
+        refresh_clips()
+
+    def on_delete():
+        if proxy.mode is Mode.PLAYING:
+            return
+        info = selected_info()
+        if info is None:
+            return
+        if not messagebox.askyesno(
+            "삭제", f"클립 {info.name}을(를) 삭제할까요?", parent=root
+        ):
+            return
+        delete_clip(info.path)
+        refresh_clips()
+
     record_button.config(command=on_record)
     play_button.config(command=on_play)
     stop_button.config(command=on_stop)
+    rename_button.config(command=on_rename)
+    delete_button.config(command=on_delete)
 
     def poll():
         if proxy.bind_error:
@@ -118,6 +166,8 @@ def run_gui(proxy: FaceProxy, config: Config) -> None:
         record_button.config(
             state="disabled" if playing else "normal"
         )
+        rename_button.config(state="disabled" if playing else "normal")
+        delete_button.config(state="disabled" if playing else "normal")
         root.after(POLL_MS, poll)
 
     refresh_clips()
