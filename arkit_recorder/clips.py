@@ -33,7 +33,16 @@ def _read_duration(path: Path) -> float | None:
             entry = json.loads(line)
             return int(entry["t"]) / 1000.0
         except (ValueError, KeyError, TypeError):
-            return None  # 마지막 유효 라인이 손상
+            # 역순 순회에서 첫 비어있지 않은 라인 = 실제 마지막 라인:
+            #   (1) tail은 항상 파일 끝을 포함하므로 역순 첫 비어있지 않은 라인이 실제
+            #       마지막 라인이다.
+            #   (2) 4096바이트 경계에서 잘릴 수 있는 것은 tail의 "첫" 라인(가장 오래된
+            #       라인)이며, 마지막 라인에 도달하기 전에 이미 유효한 t를 얻으므로
+            #       경계 절단은 duration 계산에 영향을 주지 않는다.
+            #   (3) 마지막 라인 자체가 손상된 경우(녹화 중 크래시 등)는 스펙에 따라
+            #       None을 반환한다. 이전 라인으로 거슬러 올라가지 않는 것이 의도된
+            #       동작이다 -- 부분 기록을 유효한 길이로 오인하지 않기 위함.
+            return None
     return None  # 빈 파일
 
 
