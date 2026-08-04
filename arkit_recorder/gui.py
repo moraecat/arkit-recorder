@@ -37,6 +37,8 @@ def run_gui(proxy: FaceProxy, config: Config) -> None:
     record_button.pack(fill="x", padx=6, pady=4)
 
     # ── 재생부 ──
+    # 목록 인덱스 -> ClipInfo 매핑 (refresh_clips가 갱신)
+    clip_infos = []
     play_frame = tk.LabelFrame(root, text="재생")
     play_frame.pack(fill="both", expand=True, padx=8, pady=4)
     clip_list = tk.Listbox(play_frame, height=8)
@@ -56,8 +58,6 @@ def run_gui(proxy: FaceProxy, config: Config) -> None:
     rename_button.pack(side="left", expand=True, fill="x")
     delete_button = tk.Button(manage_row, text="삭제")
     delete_button.pack(side="left", expand=True, fill="x", padx=(6, 0))
-
-    clip_infos = []
 
     def refresh_clips():
         nonlocal clip_infos
