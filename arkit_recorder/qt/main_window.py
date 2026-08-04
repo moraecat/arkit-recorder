@@ -5,14 +5,16 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QCheckBox, QHBoxLayout, QInputDialog, QLabel, QListWidget, QMainWindow,
-    QMessageBox, QPushButton, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QHBoxLayout, QInputDialog, QLabel, QListWidget,
+    QMainWindow, QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
-from ..clips import delete_clip, list_clips, rename_clip
+from ..clips import delete_clip, list_clips, rename_clip, validate_clip_name
 from ..config import Config
 from ..proxy import FaceProxy, Mode
+from ..timeline import load_timeline, save_frames, trim
 from .settings_dialog import open_settings
+from .timeline_widget import TimelineWidget
 
 POLL_MS = 200
 
@@ -31,6 +33,7 @@ class MainWindow(QMainWindow):
         self._config = config
         self._config_path = config_path
         self._clip_infos = []
+        self._timeline_data = None
         self.setWindowTitle("ARKit Recorder")
         self.resize(900, 480)
         self._build_ui()
@@ -38,6 +41,9 @@ class MainWindow(QMainWindow):
         self._poll_timer = QTimer(self)
         self._poll_timer.timeout.connect(self._poll)
         self._poll_timer.start(POLL_MS)
+        self._wave_timer = QTimer(self)
+        self._wave_timer.timeout.connect(self._poll_wave)
+        self._wave_timer.start(100)
 
     # -- UI 구성 --------------------------------------------
 
@@ -97,11 +103,19 @@ class MainWindow(QMainWindow):
         left_widget.setFixedWidth(280)
         body.addWidget(left_widget)
 
-        # 우측: Task 7이 타임라인 위젯으로 교체하는 자리
+        # 우측: 곡선 선택 + 타임라인 + 트림 저장
         self._right_panel = QVBoxLayout()
-        placeholder = QLabel("타임라인 (준비 중)")
-        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._right_panel.addWidget(placeholder, 1)
+        curve_row = QHBoxLayout()
+        curve_row.addWidget(QLabel("곡선:"))
+        self._curve_combo = QComboBox()
+        self._curve_combo.currentIndexChanged.connect(self._on_curve_changed)
+        curve_row.addWidget(self._curve_combo, 1)
+        self._trim_button = QPushButton("구간을 새 클립으로 저장")
+        self._trim_button.clicked.connect(self._on_save_trim)
+        curve_row.addWidget(self._trim_button)
+        self._right_panel.addLayout(curve_row)
+        self._timeline = TimelineWidget(self._proxy)
+        self._right_panel.addWidget(self._timeline, 1)
         right_widget = QWidget()
         right_widget.setLayout(self._right_panel)
         body.addWidget(right_widget, 1)
@@ -128,7 +142,24 @@ class MainWindow(QMainWindow):
         return self._clip_infos[row]
 
     def _on_clip_selected(self, row: int) -> None:
-        pass  # Task 7이 타임라인 로드로 교체
+        from ..timeline import blendshape_names
+
+        if row < 0 or row >= len(self._clip_infos):
+            self._timeline_data = None
+            self._timeline.set_data(None)
+            self._curve_combo.blockSignals(True)
+            self._curve_combo.clear()
+            self._curve_combo.blockSignals(False)
+            return
+        self._timeline_data = load_timeline(self._clip_infos[row].path)
+        self._timeline.set_data(self._timeline_data)
+        self._curve_combo.blockSignals(True)
+        self._curve_combo.clear()
+        self._curve_combo.addItem("활동량")
+        for name in blendshape_names(self._timeline_data):
+            self._curve_combo.addItem(name)
+        self._curve_combo.setCurrentIndex(0)
+        self._curve_combo.blockSignals(False)
 
     # -- 조작 핸들러 ----------------------------------------
 
@@ -145,8 +176,39 @@ class MainWindow(QMainWindow):
             self._record_button.setText("녹화 시작")
             self._refresh_clips()
 
+    def _on_curve_changed(self, index: int) -> None:
+        if index <= 0:
+            self._timeline.set_curve(None)  # 활동량
+        else:
+            self._timeline.set_curve(self._curve_combo.currentText())
+
     def _start_ms_for_play(self) -> int:
-        return 0  # Task 7이 플레이헤드 위치로 교체
+        if self._timeline_data is None:
+            return 0
+        playhead = self._timeline.playhead_ms()
+        if 0 < playhead < self._timeline_data.duration_ms:
+            return playhead
+        return 0
+
+    def _on_save_trim(self) -> None:
+        if self._timeline_data is None:
+            QMessageBox.information(self, "구간 저장", "클립을 먼저 선택하세요.")
+            return
+        start_ms, end_ms = self._timeline.trim_range()
+        frames = trim(self._timeline_data, start_ms, end_ms)
+        if not frames:
+            QMessageBox.warning(self, "구간 저장", "선택 구간에 프레임이 없습니다.")
+            return
+        name, ok = QInputDialog.getText(self, "구간 저장", "새 클립 이름:")
+        if not ok or not name:
+            return
+        try:
+            path = validate_clip_name(self._proxy.clips_dir, name)
+        except ValueError as e:
+            QMessageBox.warning(self, "구간 저장", str(e))
+            return
+        save_frames(frames, path)
+        self._refresh_clips()
 
     def _on_play(self) -> None:
         mode = self._proxy.mode
@@ -230,3 +292,17 @@ class MainWindow(QMainWindow):
         self._record_button.setEnabled(not busy)
         self._rename_button.setEnabled(not busy)
         self._delete_button.setEnabled(not busy)
+        if mode is Mode.RECORDING:
+            self._trim_button.setEnabled(False)
+        else:
+            if self._timeline.is_live():
+                self._timeline.set_live_wave(None)  # 녹화 종료 -> 클립 표시 복귀
+            self._trim_button.setEnabled(not busy)
+            position = self._proxy.playback_position_ms()
+            if position is not None:
+                self._timeline.set_playhead(position)
+
+    def _poll_wave(self) -> None:
+        # 녹화 파형은 100ms 주기로 갱신 (스펙 §3)
+        if self._proxy.mode is Mode.RECORDING:
+            self._timeline.set_live_wave(self._proxy.live_wave())

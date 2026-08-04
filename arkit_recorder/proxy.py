@@ -100,6 +100,9 @@ class FaceProxy:
         since = None if self._last_recv_time is None else now - self._last_recv_time
         return hz, since
 
+    def live_wave(self) -> list[tuple[int, float]]:
+        return self._recorder.live_wave()
+
     def live_available(self) -> bool:
         return (
             self._last_recv_time is not None
