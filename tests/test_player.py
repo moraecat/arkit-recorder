@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from arkit_recorder.player import ClipPlayer
 from arkit_recorder.protocol import parse_packet
 
@@ -181,3 +183,71 @@ def test_loop_boundary_crossfade(tmp_path):
     #   t=200ms: blend(100, 0, 0.4)   = 60   <- 클립 값으로 수렴 중
     #   t=400ms: blend(100, 100, 0.8) = 100
     assert values == [0, 0, 100, 100, 60, 100]
+
+
+def test_start_ms_skips_and_rebases_timing(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": 0, "d": "a-1|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 100, "d": "a-2|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 250, "d": "a-3|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    clock = FakeClock()
+    sent = []
+    player = make_player(clock, lambda p: sent.append((clock.time, p)))
+    player.load(path)
+    player.play(start_ms=100)
+    # t=100 프레임이 즉시(0.0초), t=250 프레임이 0.15초에 송출
+    assert [t for t, _ in sent] == [0.0, pytest.approx(0.15)]
+    assert [parse_packet(p).blendshapes["a"] for _, p in sent] == [2, 3]
+    assert player.position_ms == 250
+
+
+def test_position_ms_tracks_playback(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": 0, "d": "a-1|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 100, "d": "a-2|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    clock = FakeClock()
+    positions = []
+    player = make_player(clock, lambda p: positions.append(player.position_ms))
+    player.load(path)
+    player.play()
+    # 콜백 시점에는 직전 프레임 위치, 종료 후 마지막 프레임 위치
+    assert player.position_ms == 100
+
+
+def test_start_ms_loop_rewinds_to_zero(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [
+        {"t": 0, "d": "a-1|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 50, "d": "a-2|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    clock = FakeClock()
+    sent = []
+
+    def send(p):
+        sent.append(p)
+        if len(sent) >= 3:
+            player.stop()
+
+    player = make_player(clock, send)
+    player.load(path)
+    player.play(loop=True, start_ms=50)
+    values = [parse_packet(p).blendshapes["a"] for p in sent]
+    # 1바퀴: start_ms=50부터 [2], 2바퀴: 처음(0)부터 [1, 2...]
+    assert values[0] == 2
+    assert values[1] == 1
+
+
+def test_start_ms_beyond_clip_sends_nothing(tmp_path):
+    path = tmp_path / "c.jsonl"
+    write_clip(path, [{"t": 0, "d": "a-1|trackingStatus-1|=|head#0,0,0|"}])
+    clock = FakeClock()
+    sent = []
+    player = make_player(clock, lambda p: sent.append(p))
+    player.load(path)
+    player.play(start_ms=999)
+    assert sent == []
+    assert not player.is_playing

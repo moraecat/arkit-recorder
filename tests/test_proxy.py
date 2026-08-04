@@ -256,3 +256,17 @@ def test_fade_back_to_live(proxy, warudo_socket):
     send_to_proxy(proxy, "a-100|trackingStatus-1|=|head#0,0,0|")
     value = parse_packet(recv_text(warudo_socket)).blendshapes["a"]
     assert 95 <= value < 100  # crossfade_live_ms=2000 창 안
+
+
+def test_playback_position_and_start_ms(proxy, warudo_socket):
+    clip = make_clip(proxy, [
+        {"t": 0, "d": "a-1|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 50, "d": "a-2|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    assert proxy.playback_position_ms() is None  # 재생 전
+    count = proxy.start_playback(clip, loop=False, start_ms=50)
+    assert count == 2  # 반환값은 전체 로드 프레임 수 (기존 의미 유지)
+    value = parse_packet(recv_text(warudo_socket)).blendshapes["a"]
+    assert value == 2  # start_ms=50부터이므로 첫 송출이 a-2
+    assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
+    assert proxy.playback_position_ms() is None  # 종료 후
