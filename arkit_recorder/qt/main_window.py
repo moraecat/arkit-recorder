@@ -329,8 +329,8 @@ class MainWindow(QMainWindow):
         )
         playing = mode is Mode.PLAYING
         if self._was_playing and not playing:
-            # 재생 종료 전이 — 자연 종료면 구간 시작으로 리셋 (스펙 §4.3)
-            if not self._stopped_by_user:
+            # 재생 종료 전이 — 자연 종료(PASSTHROUGH 복귀)일 때만 구간 시작으로 리셋
+            if not self._stopped_by_user and mode is Mode.PASSTHROUGH:
                 trim_start, _ = self._timeline.trim_range()
                 self._timeline.set_playhead(trim_start)
             self._stopped_by_user = False
