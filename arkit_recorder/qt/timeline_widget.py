@@ -225,4 +225,5 @@ class TimelineWidget(QWidget):
             return
         if self._last_scrub_index < 0 or self._last_scrub_index >= len(self._data.frames):
             return
-        self._proxy.scrub_frame(self._data.frames[self._last_scrub_index][1])
+        _, packet = self._data.frames[self._last_scrub_index]
+        self._proxy.scrub_frame(packet)

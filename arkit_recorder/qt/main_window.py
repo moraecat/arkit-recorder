@@ -170,7 +170,11 @@ class MainWindow(QMainWindow):
             self._record_button.setText("녹화 정지 (저장)")
         elif mode is Mode.RECORDING:
             # 버튼 시점에 즉시 정지 (스펙 §2.3) — 이름 입력 중 프레임이 쌓이지 않게
-            self._proxy.finish_recording()
+            try:
+                self._proxy.finish_recording()
+            except OSError as e:
+                QMessageBox.warning(self, "녹화 정지", f"녹화 정지 실패: {e}")
+                return
             self._record_button.setText("녹화 시작")
             while True:
                 name, ok = QInputDialog.getText(self, "클립 저장", "클립 이름:")
