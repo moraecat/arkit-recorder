@@ -19,6 +19,7 @@ class Mode(Enum):
     PASSTHROUGH = "passthrough"
     RECORDING = "recording"
     PLAYING = "playing"
+    SCRUBBING = "scrubbing"
 
 
 class FaceProxy:
@@ -41,6 +42,7 @@ class FaceProxy:
         self._last_live_packet: str | None = None
         self._fade_back_from: Frame | None = None
         self._fade_back_until = 0.0
+        self._last_scrub_packet: str | None = None
         self.bind_error: str | None = None
         self.bound_port: int | None = None
         self._recv_stop = threading.Event()  # 리스너 전용 정지 (재시작 시 교체됨)
@@ -121,8 +123,8 @@ class FaceProxy:
             self._recv_times.append(now)
             self._last_live_packet = packet
             mode = self._mode  # GIL 원자 읽기 의존, 핫패스이므로 락 생략
-            if mode is Mode.PLAYING:
-                continue  # 재생 중엔 라이브 전달 차단 (수신 통계만 갱신)
+            if mode is Mode.PLAYING or mode is Mode.SCRUBBING:
+                continue  # 재생/스크럽 중엔 라이브 전달 차단 (수신 통계만 갱신)
             out = self._apply_fade_back(packet, now)
             self._forward(out)
             if mode is Mode.RECORDING:
@@ -223,6 +225,40 @@ class FaceProxy:
         player = self._player
         if player is not None:
             player.stop()
+
+    # -- 스크럽 (GUI 스레드에서 호출) --------------------------
+
+    def begin_scrub(self) -> bool:
+        with self._mode_lock:
+            if self._mode is not Mode.PASSTHROUGH:
+                return False
+            self._fade_back_from = None  # 이전 복귀 페이드 취소
+            self._last_scrub_packet = None
+            self._mode = Mode.SCRUBBING
+            return True
+
+    def scrub_frame(self, packet: str) -> None:
+        if self.mode is not Mode.SCRUBBING:
+            return
+        frame = parse_packet(packet)
+        if frame is not None and frame.blendshapes.get("trackingStatus") == 0:
+            return  # Warudo가 무시하는 프레임: 송출 생략
+        self._forward(packet)
+        self._last_scrub_packet = packet
+
+    def end_scrub(self) -> None:
+        with self._mode_lock:
+            if self._mode is not Mode.SCRUBBING:
+                return
+            self._mode = Mode.PASSTHROUGH
+            if self.live_available() and self._last_scrub_packet:
+                frame = parse_packet(self._last_scrub_packet)
+                if frame is not None:
+                    self._fade_back_from = frame
+                    self._fade_back_until = (
+                        time.perf_counter()
+                        + self._config.crossfade_live_ms / 1000.0
+                    )
 
     # -- 설정 적용 (GUI 스레드에서 호출) ----------------------
 

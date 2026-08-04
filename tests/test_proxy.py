@@ -270,3 +270,61 @@ def test_playback_position_and_start_ms(proxy, warudo_socket):
     assert value == 2  # start_ms=50부터이므로 첫 송출이 a-2
     assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
     assert proxy.playback_position_ms() is None  # 종료 후
+
+
+# -- 스크럽 테스트 -------------------------------------------------------
+
+SCRUB_A = "a-10|trackingStatus-1|=|head#0,0,0|"
+SCRUB_B = "a-90|trackingStatus-1|=|head#0,0,0|"
+
+
+def test_scrub_forwards_and_blocks_live(proxy, warudo_socket):
+    assert proxy.begin_scrub() is True
+    assert proxy.mode is Mode.SCRUBBING
+    assert proxy.begin_scrub() is False  # 중복 시작 불가
+    send_to_proxy(proxy, "live-99|trackingStatus-1|=|head#0,0,0|")  # 차단
+    proxy.scrub_frame(SCRUB_A)
+    proxy.scrub_frame("skip-1|trackingStatus-0|=|head#0,0,0|")  # 생략
+    proxy.scrub_frame(SCRUB_B)
+    received = [recv_text(warudo_socket), recv_text(warudo_socket)]
+    assert [parse_packet(p).blendshapes["a"] for p in received] == [10, 90]
+    proxy.end_scrub()
+    assert proxy.mode is Mode.PASSTHROUGH
+    warudo_socket.settimeout(0.3)
+    with pytest.raises(socket.timeout):
+        warudo_socket.recvfrom(65535)  # 차단된 라이브가 뒤늦게 오지 않음
+
+
+def test_scrub_rejected_outside_passthrough(proxy, warudo_socket):
+    proxy.start_recording()
+    assert proxy.begin_scrub() is False
+    proxy.stop_recording("cleanup")
+
+
+def test_scrub_frame_ignored_when_not_scrubbing(proxy, warudo_socket):
+    proxy.scrub_frame(SCRUB_A)  # SCRUBBING 아님 -> 무시
+    warudo_socket.settimeout(0.3)
+    with pytest.raises(socket.timeout):
+        warudo_socket.recvfrom(65535)
+
+
+def test_end_scrub_fades_back_to_live(proxy, warudo_socket):
+    # 라이브 살림 (fixture crossfade_live_ms=2000)
+    send_to_proxy(proxy, "a-100|trackingStatus-1|=|head#0,0,0|")
+    recv_text(warudo_socket)
+    assert proxy.begin_scrub()
+    proxy.scrub_frame("a-0|trackingStatus-1|=|head#0,0,0|")
+    recv_text(warudo_socket)
+    proxy.end_scrub()
+    send_to_proxy(proxy, "a-100|trackingStatus-1|=|head#0,0,0|")
+    value = parse_packet(recv_text(warudo_socket)).blendshapes["a"]
+    assert value < 100  # 마지막 스크럽 프레임(a=0)과 블렌드되어 복귀 중
+
+
+def test_end_scrub_without_live_no_fade(proxy, warudo_socket):
+    assert proxy.begin_scrub()
+    proxy.scrub_frame(SCRUB_A)
+    recv_text(warudo_socket)
+    proxy.end_scrub()
+    assert proxy.mode is Mode.PASSTHROUGH
+    assert proxy._fade_back_from is None  # 라이브 부재 -> 페이드 미준비
