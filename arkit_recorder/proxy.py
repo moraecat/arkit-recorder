@@ -198,10 +198,13 @@ class FaceProxy:
             self._finish_playback(player)
 
     def playback_position_ms(self) -> int | None:
-        player = self._player
-        if self.mode is Mode.PLAYING and player is not None:
-            return player.position_ms
-        return None
+        with self._mode_lock:
+            if self._mode is not Mode.PLAYING:
+                return None
+            player = self._player
+        if player is None:
+            return None
+        return player.position_ms
 
     def _finish_playback(self, player: ClipPlayer) -> None:
         with self._mode_lock:
