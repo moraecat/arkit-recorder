@@ -92,6 +92,8 @@ class ClipPlayer:
                         self.position_ms = t_ms
                 if not loop:
                     return
+                if not range_frames:
+                    return  # 방어 — 현재는 first_frames 가드로 도달 불가
                 # 루프 되감기는 재생 구간 시작부터 (구간 미지정 시 0 = 기존 동작)
                 frames = range_frames
                 base_ms = range_frames[0][0] if range_start_ms > 0 else 0
