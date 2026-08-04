@@ -171,12 +171,13 @@ class TimelineWidget(QWidget):
             return
         x = event.position().x()
         if event.position().y() <= MARKER_BAND:
+            # 겹침 시 오른쪽(end) 우선 — 겹친 상태에서 end를 오른쪽으로 끌어낼 수 있게
             # 트림 핸들: 가까운 쪽 마커를 잡는다 (+-8px)
-            if abs(x - self._ms_to_x(self._trim_start)) <= 8:
-                self._dragging = "trim_start"
-                return
             if abs(x - self._ms_to_x(self._trim_end)) <= 8:
                 self._dragging = "trim_end"
+                return
+            if abs(x - self._ms_to_x(self._trim_start)) <= 8:
+                self._dragging = "trim_start"
                 return
             return
         if self._proxy.begin_scrub():

@@ -200,7 +200,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "구간 저장", "선택 구간에 프레임이 없습니다.")
             return
         name, ok = QInputDialog.getText(self, "구간 저장", "새 클립 이름:")
-        if not ok or not name:
+        if not ok or not name.strip():
             return
         try:
             path = validate_clip_name(self._proxy.clips_dir, name)
