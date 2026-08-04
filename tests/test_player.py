@@ -232,7 +232,8 @@ def test_start_ms_loop_rewinds_to_zero(tmp_path):
         if len(sent) >= 3:
             player.stop()
 
-    player = make_player(clock, send)
+    # 루프 크로스페이드를 끄고 순수 되감기 동작만 검증
+    player = make_player(clock, send, crossfade_loop_ms=0)
     player.load(path)
     player.play(loop=True, start_ms=50)
     values = [parse_packet(p).blendshapes["a"] for p in sent]

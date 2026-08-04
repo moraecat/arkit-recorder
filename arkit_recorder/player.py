@@ -16,7 +16,7 @@ class ClipPlayer:
         now=time.perf_counter,
         sleep=time.sleep,
         crossfade_live_ms: int = 300,
-        crossfade_loop_ms: int = 0,
+        crossfade_loop_ms: int = 500,
     ):
         self._send = send
         self._now = now
