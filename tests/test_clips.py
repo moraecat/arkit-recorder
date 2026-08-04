@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from arkit_recorder.clips import delete_clip, list_clips, rename_clip
+from arkit_recorder.clips import delete_clip, list_clips, rename_clip, validate_clip_name
 
 
 def write_clip(dir_path, name, entries):
@@ -80,6 +80,22 @@ def test_rename_clip_errors(tmp_path):
         rename_clip(tmp_path, "old", "../evil")
     with pytest.raises(ValueError):
         rename_clip(tmp_path, "old", "a/b")
+
+
+def test_validate_clip_name_ok(tmp_path):
+    assert validate_clip_name(tmp_path, "  fine  ") == tmp_path / "fine.jsonl"
+
+
+def test_validate_clip_name_errors(tmp_path):
+    write_clip(tmp_path, "taken", [{"t": 0, "d": "x"}])
+    with pytest.raises(ValueError):
+        validate_clip_name(tmp_path, "")
+    with pytest.raises(ValueError):
+        validate_clip_name(tmp_path, "_hidden")
+    with pytest.raises(ValueError):
+        validate_clip_name(tmp_path, "a/b")
+    with pytest.raises(ValueError):
+        validate_clip_name(tmp_path, "taken")
 
 
 def test_delete_clip(tmp_path):
