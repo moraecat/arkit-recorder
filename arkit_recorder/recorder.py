@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections import deque
 from pathlib import Path
+
+from .protocol import Frame, parse_packet
+from .timeline import frame_activity
 
 
 class ClipRecorder:
@@ -14,6 +18,8 @@ class ClipRecorder:
         self._file = None
         self._start_time = 0.0
         self.frame_count = 0
+        self._wave: deque[tuple[int, float]] = deque(maxlen=36000)  # 60fps 10분
+        self._prev_frame: Frame | None = None
 
     @property
     def is_recording(self) -> bool:
@@ -28,6 +34,8 @@ class ClipRecorder:
             self._file = open(self._tmp_path, "w", encoding="utf-8")
             self._start_time = self._now()
             self.frame_count = 0
+            self._wave.clear()
+            self._prev_frame = None
 
     def feed(self, packet: str) -> None:
         with self._lock:
@@ -36,6 +44,12 @@ class ClipRecorder:
             t_ms = round((self._now() - self._start_time) * 1000)
             self._file.write(json.dumps({"t": t_ms, "d": packet}) + "\n")
             self.frame_count += 1
+            frame = parse_packet(packet)
+            if frame is None:
+                self._wave.append((t_ms, 0.0))
+            else:
+                self._wave.append((t_ms, frame_activity(self._prev_frame, frame)))
+                self._prev_frame = frame
 
     def stop_and_save(self, final_path: Path) -> int:
         with self._lock:
@@ -53,3 +67,7 @@ class ClipRecorder:
                 self._file.close()
                 self._file = None
             self._tmp_path.unlink(missing_ok=True)
+
+    def live_wave(self) -> list[tuple[int, float]]:
+        with self._lock:
+            return list(self._wave)

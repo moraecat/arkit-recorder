@@ -56,3 +56,29 @@ def test_double_start_guard(tmp_path):
     assert count == 2
     lines = final.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
+
+
+def test_live_wave_accumulates_activity(tmp_path):
+    clock = FakeClock()
+    rec = ClipRecorder(tmp_path / "_tmp.jsonl", now=clock.now)
+    rec.start()
+    rec.feed("jawOpen-0|trackingStatus-1|=|head#0,0,0|")
+    clock.time += 0.1
+    rec.feed("jawOpen-40|trackingStatus-1|=|head#0,0,0|")
+    clock.time += 0.1
+    rec.feed("not parseable")
+    wave = rec.live_wave()
+    assert wave[0] == (0, 0.0)          # 첫 프레임 활동량 0
+    assert wave[1] == (100, 40.0)       # |40-0|
+    assert wave[2] == (200, 0.0)        # 파싱 불가 -> 0.0
+    rec.stop_and_save(tmp_path / "c.jsonl")
+
+
+def test_live_wave_resets_on_start(tmp_path):
+    rec = ClipRecorder(tmp_path / "_tmp.jsonl")
+    rec.start()
+    rec.feed("a-1|trackingStatus-1|=|head#0,0,0|")
+    rec.stop_and_save(tmp_path / "one.jsonl")
+    rec.start()
+    assert rec.live_wave() == []
+    rec.discard()
