@@ -193,8 +193,9 @@ class FaceProxy:
         range_end_ms: int | None = None,
     ) -> int:
         with self._mode_lock:
-            if self._mode is not Mode.PASSTHROUGH:
+            if self._mode not in (Mode.PASSTHROUGH, Mode.SCRUBBING):
                 return 0
+            from_scrub = self._mode is Mode.SCRUBBING
             player = ClipPlayer(
                 send=self._forward,
                 crossfade_live_ms=self._config.crossfade_live_ms,
@@ -203,7 +204,11 @@ class FaceProxy:
             count = player.load(clip_path)
             if count == 0:
                 return 0
-            lead_in = self._last_live_packet if self.live_available() else None
+            if from_scrub:
+                # 일시정지 재개: 고정 표정 -> 재생 첫 프레임 크로스페이드
+                lead_in = self._last_scrub_packet
+            else:
+                lead_in = self._last_live_packet if self.live_available() else None
             self._player = player
             self._fade_back_from = None  # 이전 복귀 페이드 취소
             self._mode = Mode.PLAYING
@@ -255,14 +260,14 @@ class FaceProxy:
         with self._mode_lock:
             if self._mode is Mode.PLAYING:
                 self._mode = Mode.PASSTHROUGH
-            if self.live_available() and player.last_sent_packet:
-                frame = parse_packet(player.last_sent_packet)
-                if frame is not None:
-                    self._fade_back_from = frame
-                    self._fade_back_until = (
-                        time.perf_counter()
-                        + self._config.crossfade_live_ms / 1000.0
-                    )
+                if self.live_available() and player.last_sent_packet:
+                    frame = parse_packet(player.last_sent_packet)
+                    if frame is not None:
+                        self._fade_back_from = frame
+                        self._fade_back_until = (
+                            time.perf_counter()
+                            + self._config.crossfade_live_ms / 1000.0
+                        )
 
     def stop_playback(self) -> None:
         player = self._player
@@ -272,13 +277,23 @@ class FaceProxy:
     # -- 스크럽 (GUI 스레드에서 호출) --------------------------
 
     def begin_scrub(self) -> bool:
+        player = None
+        thread = None
         with self._mode_lock:
-            if self._mode is not Mode.PASSTHROUGH:
+            if self._mode is Mode.PLAYING:
+                player = self._player
+                thread = self._player_thread
+            elif self._mode is not Mode.PASSTHROUGH:
                 return False
             self._fade_back_from = None  # 이전 복귀 페이드 취소
             self._last_scrub_packet = None
             self._mode = Mode.SCRUBBING
-            return True
+        if player is not None:
+            # 재생 -> 일시정지 스크럽: 락 밖에서 정지+조인 (_finish_playback과 데드락 방지)
+            player.stop()
+            if thread is not None:
+                thread.join(timeout=1.0)
+        return True
 
     def scrub_frame(self, packet: str) -> None:
         if self.mode is not Mode.SCRUBBING:

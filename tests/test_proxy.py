@@ -395,3 +395,45 @@ def test_update_playback_range_shrinks_live(proxy, warudo_socket):
         pass
     assert all(v <= 1 for v in remaining)  # t=0,100 프레임(a-0/a-1)만
     assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
+
+
+def test_begin_scrub_pauses_playback(proxy, warudo_socket):
+    clip = make_clip(proxy, [
+        {"t": i * 50, "d": f"a-{n}|trackingStatus-1|=|head#0,0,0|"}
+        for n, i in enumerate(range(100))
+    ])
+    proxy.start_playback(clip, loop=True)
+    recv_text(warudo_socket)  # 재생 확인
+    assert proxy.begin_scrub() is True  # 재생 중 스크럽 -> 일시정지 전환
+    assert proxy.mode is Mode.SCRUBBING
+    # 조인 완료 후이므로 잔여 재생 프레임을 비우고 나면 조용해야 함
+    warudo_socket.settimeout(0.3)
+    try:
+        while True:
+            warudo_socket.recvfrom(65535)
+    except socket.timeout:
+        pass
+    proxy.scrub_frame(SCRUB_A)
+    warudo_socket.settimeout(2.0)
+    assert parse_packet(recv_text(warudo_socket)).blendshapes["a"] == 10
+    proxy.end_scrub()
+    assert proxy.mode is Mode.PASSTHROUGH
+
+
+def test_start_playback_resumes_from_scrub(proxy, warudo_socket):
+    assert proxy.begin_scrub() is True
+    proxy.scrub_frame("a-0|trackingStatus-1|=|head#0,0,0|")
+    recv_text(warudo_socket)
+    clip = make_clip(proxy, [
+        {"t": 0, "d": "a-100|trackingStatus-1|=|head#0,0,0|"},
+        {"t": 100, "d": "a-100|trackingStatus-1|=|head#0,0,0|"},
+    ])
+    count = proxy.start_playback(clip, loop=False)  # SCRUBBING에서 직전환
+    assert count == 2
+    values = [
+        parse_packet(recv_text(warudo_socket)).blendshapes["a"] for _ in range(2)
+    ]
+    # 리드인이 마지막 스크럽 프레임(a=0): fixture fade 2000ms
+    # t=0 -> blend(0,100,0)=0, t=100 -> blend(0,100,0.05)=5
+    assert values == [0, 5]
+    assert wait_until(lambda: proxy.mode is Mode.PASSTHROUGH)
