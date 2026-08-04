@@ -3,8 +3,8 @@ import sys
 from pathlib import Path
 
 from arkit_recorder.config import load_config
-from arkit_recorder.gui import run_gui
 from arkit_recorder.proxy import FaceProxy
+from arkit_recorder.qt.app import run_app
 
 if getattr(sys, "frozen", False):
     # PyInstaller 빌드: __file__은 임시 해제 폴더를 가리키므로 exe 위치 기준
@@ -19,7 +19,7 @@ def main() -> None:
     proxy = FaceProxy(config, BASE_DIR)
     proxy.start()
     try:
-        run_gui(proxy, config, config_path)
+        raise SystemExit(run_app(proxy, config, config_path))
     finally:
         proxy.stop()
 
