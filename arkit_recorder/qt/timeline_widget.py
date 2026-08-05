@@ -5,7 +5,6 @@ from PySide6.QtCore import QPointF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
-from ..proxy import Mode
 from ..timeline import (
     TimelineData, activity_curve, blendshape_curve, frame_index_at,
 )
@@ -34,7 +33,6 @@ class TimelineWidget(QWidget):
         self._dragging: str | None = None  # scrub | trim_start | trim_end
         self._last_scrub_index = -1
         self._paused = False
-        self._scrub_from_playing = False
         self.setMinimumHeight(180)
         # 스크럽 홀드 킵얼라이브 — Warudo 0.5초 무수신 트래킹 끊김 방지 (스펙 §3)
         self._keepalive = QTimer(self)
@@ -87,7 +85,6 @@ class TimelineWidget(QWidget):
             return
         self._keepalive.stop()
         self._paused = False
-        self._scrub_from_playing = False
         if end:
             self._proxy.end_scrub()
 
@@ -223,14 +220,11 @@ class TimelineWidget(QWidget):
             self._dragging = "scrub"
             self._scrub_to(x)
             return
-        self._scrub_from_playing = self._proxy.mode is Mode.PLAYING
         if self._proxy.begin_scrub():
             self._dragging = "scrub"
             self._last_scrub_index = -1
             self._keepalive.start()
             self._scrub_to(x)
-        else:
-            self._scrub_from_playing = False
 
     def mouseMoveEvent(self, event) -> None:
         x = event.position().x()
@@ -247,12 +241,9 @@ class TimelineWidget(QWidget):
 
     def mouseReleaseEvent(self, event) -> None:
         if self._dragging == "scrub":
-            if self._paused or self._scrub_from_playing:
-                # 재생 중 시작한 스크럽 -> 일시정지 유지 (킵얼라이브 계속 = 프레임 고정)
-                self._paused = True
-            else:
-                self._keepalive.stop()
-                self._proxy.end_scrub()
+            # 스크럽을 놓으면 항상 일시정지 유지 (킵얼라이브 계속 = 프레임 고정)
+            # 라이브 복귀는 [정지] 버튼으로
+            self._paused = True
         self._dragging = None
 
     def _scrub_to(self, x: float) -> None:
