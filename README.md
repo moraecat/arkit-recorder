@@ -1,6 +1,7 @@
+
 # ARKit Recorder
 
-<img width="1440" height="1440" alt="arkit-recorder" src="https://github.com/user-attachments/assets/26351ba3-7335-42cb-92c2-0e12e3263494" />
+<img width="1440" height="1440" alt="arkit-recorder" src="https://github.com/user-attachments/assets/68c2aec8-ee43-4c9c-83ed-8b188bcdcda6" />
 
 아이폰 페이스 트래킹(iFacialMocap)의 **신호 자체를 녹화해뒀다가,
 아이폰 없이 그대로 재생 송출**하는 상시 실행 UDP 프록시입니다.
