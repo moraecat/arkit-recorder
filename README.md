@@ -75,10 +75,10 @@ python main.py
 ## 개발 (소스 실행)
 
 Python 3.11+ 와 PySide6가 필요합니다 (`pip install -r requirements.txt`).
-코어 로직은 표준 라이브러리만 사용하며, 테스트는 PySide6 없이 돌아갑니다.
+코어 로직은 표준 라이브러리만 사용합니다.
 
 ```
-python -m pytest tests/ -v        # 테스트 (92개)
+python main.py                                                   # 실행
 pyinstaller --onefile --windowed --name arkit-recorder main.py   # exe 빌드
 ```
 

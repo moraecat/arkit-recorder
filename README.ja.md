@@ -75,10 +75,10 @@ python main.py
 ## 開発 (ソースから実行)
 
 Python 3.11+ と PySide6 が必要です (`pip install -r requirements.txt`)。
-コアロジックは標準ライブラリのみで、テストはPySide6なしで動きます。
+コアロジックは標準ライブラリのみを使用しています。
 
 ```
-python -m pytest tests/ -v        # テスト (92件)
+python main.py                                                   # 実行
 pyinstaller --onefile --windowed --name arkit-recorder main.py   # exeビルド
 ```
 

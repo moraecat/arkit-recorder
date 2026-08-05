@@ -80,10 +80,10 @@ closed, so keep it running during streams.
 ## Development (running from source)
 
 Requires Python 3.11+ and PySide6 (`pip install -r requirements.txt`).
-The core logic uses only the standard library; tests run without PySide6.
+The core logic uses only the standard library.
 
 ```
-python -m pytest tests/ -v        # tests (92)
+python main.py                                                   # run
 pyinstaller --onefile --windowed --name arkit-recorder main.py   # build exe
 ```
 
