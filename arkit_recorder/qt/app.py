@@ -32,6 +32,7 @@ def run_app(proxy, config, config_path) -> int:
     try:
         from PySide6.QtWidgets import QApplication
     except ImportError:
+        print("PySide6 is not installed. Install with: py -3.11 -m pip install PySide6")
         print("PySide6가 설치되어 있지 않습니다. 설치: py -3.11 -m pip install PySide6")
         return 1
     from PySide6.QtCore import QLocale
