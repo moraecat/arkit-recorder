@@ -5,6 +5,7 @@ from PySide6.QtCore import QPointF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
+from ..i18n import tr
 from ..timeline import (
     TimelineData, activity_curve, blendshape_curve, frame_index_at,
 )
@@ -132,12 +133,12 @@ class TimelineWidget(QWidget):
         if self._live_wave is not None:
             self._paint_curve(painter, self._live_wave, WAVE_COLOR)
             painter.setPen(TEXT_COLOR)
-            painter.drawText(MARGIN_X + 4, 18, "녹화 중")
+            painter.drawText(MARGIN_X + 4, 18, tr("tl.recording"))
             return
         if self._data is None or not self._data.frames:
             painter.setPen(TEXT_COLOR)
             painter.drawText(
-                self.rect(), Qt.AlignmentFlag.AlignCenter, "프레임 없음"
+                self.rect(), Qt.AlignmentFlag.AlignCenter, tr("tl.no_frames")
             )
             return
         self._paint_grid(painter)

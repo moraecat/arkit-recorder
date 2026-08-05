@@ -34,11 +34,26 @@ def run_app(proxy, config, config_path) -> int:
     except ImportError:
         print("PySide6가 설치되어 있지 않습니다. 설치: py -3.11 -m pip install PySide6")
         return 1
+    from PySide6.QtCore import QLocale
+
+    from ..i18n import set_language
     from .main_window import MainWindow
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setStyleSheet(DARK_QSS)
+
+    lang = config.language
+    if lang not in ("ko", "en", "ja"):
+        name = QLocale.system().name()  # 예: ko_KR, ja_JP, en_US
+        if name.startswith("ko"):
+            lang = "ko"
+        elif name.startswith("ja"):
+            lang = "ja"
+        else:
+            lang = "en"
+    set_language(lang)
+
     window = MainWindow(proxy, config, config_path)
     window.show()
     return app.exec()

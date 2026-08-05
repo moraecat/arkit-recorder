@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 
 from ..clips import delete_clip, list_clips, rename_clip, validate_clip_name
 from ..config import Config
+from ..i18n import tr
 from ..proxy import FaceProxy, Mode
 from ..timeline import load_timeline, save_frames, trim
 from .settings_dialog import open_settings
@@ -18,11 +19,11 @@ from .timeline_widget import TimelineWidget
 
 POLL_MS = 200
 
-MODE_NAMES = {
-    Mode.PASSTHROUGH: "패스스루",
-    Mode.RECORDING: "녹화 중",
-    Mode.PLAYING: "재생 중",
-    Mode.SCRUBBING: "스크럽 중",
+MODE_KEYS = {
+    Mode.PASSTHROUGH: "mode.passthrough",
+    Mode.RECORDING: "mode.recording",
+    Mode.PLAYING: "mode.playing",
+    Mode.SCRUBBING: "mode.scrubbing",
 }
 
 
@@ -56,10 +57,10 @@ class MainWindow(QMainWindow):
 
         # 상단 바
         top = QHBoxLayout()
-        self._recv_label = QLabel("수신: -")
-        self._mode_label = QLabel("모드: -")
-        self._forward_label = QLabel("전달: -")
-        settings_button = QPushButton("설정")
+        self._recv_label = QLabel(tr("label.recv_placeholder"))
+        self._mode_label = QLabel(tr("label.mode_placeholder"))
+        self._forward_label = QLabel(tr("label.forward_placeholder"))
+        settings_button = QPushButton(tr("btn.settings"))
         settings_button.clicked.connect(self._on_settings)
         top.addWidget(self._recv_label)
         top.addSpacing(16)
@@ -78,13 +79,13 @@ class MainWindow(QMainWindow):
         self._clip_list = QListWidget()
         self._clip_list.currentRowChanged.connect(self._on_clip_selected)
         left.addWidget(self._clip_list, 1)
-        self._record_button = QPushButton("녹화 시작")
+        self._record_button = QPushButton(tr("btn.record_start"))
         self._record_button.clicked.connect(self._on_record)
         left.addWidget(self._record_button)
         manage_row = QHBoxLayout()
-        self._rename_button = QPushButton("이름 변경")
+        self._rename_button = QPushButton(tr("btn.rename"))
         self._rename_button.clicked.connect(self._on_rename)
-        self._delete_button = QPushButton("삭제")
+        self._delete_button = QPushButton(tr("btn.delete"))
         self._delete_button.clicked.connect(self._on_delete)
         manage_row.addWidget(self._rename_button)
         manage_row.addWidget(self._delete_button)
@@ -97,11 +98,11 @@ class MainWindow(QMainWindow):
         # 우측: 곡선 선택 + 타임라인 + 트림 저장
         self._right_panel = QVBoxLayout()
         curve_row = QHBoxLayout()
-        curve_row.addWidget(QLabel("곡선:"))
+        curve_row.addWidget(QLabel(tr("label.curve")))
         self._curve_combo = QComboBox()
         self._curve_combo.currentIndexChanged.connect(self._on_curve_changed)
         curve_row.addWidget(self._curve_combo, 1)
-        self._trim_button = QPushButton("구간을 새 클립으로 저장")
+        self._trim_button = QPushButton(tr("btn.save_trim"))
         self._trim_button.clicked.connect(self._on_save_trim)
         curve_row.addWidget(self._trim_button)
         self._right_panel.addLayout(curve_row)
@@ -111,25 +112,25 @@ class MainWindow(QMainWindow):
         controls = QHBoxLayout()
         controls.addStretch(1)
         style = self.style()
-        self._play_button = QPushButton("재생")
+        self._play_button = QPushButton(tr("btn.play"))
         self._play_button.setIcon(
             style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
         )
         self._play_button.clicked.connect(self._on_play)
-        self._pause_button = QPushButton("일시정지")
+        self._pause_button = QPushButton(tr("btn.pause"))
         self._pause_button.setIcon(
             style.standardIcon(QStyle.StandardPixmap.SP_MediaPause)
         )
         self._pause_button.setCheckable(True)
         self._pause_button.setEnabled(False)
         self._pause_button.clicked.connect(self._on_pause)
-        self._stop_button = QPushButton("정지")
+        self._stop_button = QPushButton(tr("btn.stop"))
         self._stop_button.setIcon(
             style.standardIcon(QStyle.StandardPixmap.SP_MediaStop)
         )
         self._stop_button.setEnabled(False)
         self._stop_button.clicked.connect(self._on_stop)
-        self._loop_button = QPushButton("루프")
+        self._loop_button = QPushButton(tr("btn.loop"))
         self._loop_button.setIcon(
             style.standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
         )
@@ -152,16 +153,16 @@ class MainWindow(QMainWindow):
         self._clip_list.clear()
         for info in self._clip_infos:
             if info.duration_s is None:
-                self._clip_list.addItem(f"{info.name} — ?")
+                self._clip_list.addItem(tr("clip.item_unknown", name=info.name))
             else:
-                self._clip_list.addItem(f"{info.name} — {info.duration_s:.1f}초")
+                self._clip_list.addItem(tr("clip.item", name=info.name, seconds=info.duration_s))
         self._clip_list.blockSignals(False)
         self._on_clip_selected(self._clip_list.currentRow())
 
     def _selected_info(self):
         row = self._clip_list.currentRow()
         if row < 0 or row >= len(self._clip_infos):
-            QMessageBox.information(self, "클립", "클립을 선택하세요.")
+            QMessageBox.information(self, tr("dlg.clip.title"), tr("dlg.clip.select"))
             return None
         return self._clip_infos[row]
 
@@ -181,7 +182,7 @@ class MainWindow(QMainWindow):
         self._timeline.set_data(self._timeline_data)
         self._curve_combo.blockSignals(True)
         self._curve_combo.clear()
-        self._curve_combo.addItem("활동량")
+        self._curve_combo.addItem(tr("curve.activity"))
         for name in blendshape_names(self._timeline_data):
             self._curve_combo.addItem(name)
         self._curve_combo.setCurrentIndex(0)
@@ -193,28 +194,28 @@ class MainWindow(QMainWindow):
         mode = self._proxy.mode
         if mode is Mode.PASSTHROUGH:
             self._proxy.start_recording()
-            self._record_button.setText("녹화 정지 (저장)")
+            self._record_button.setText(tr("btn.record_stop"))
         elif mode is Mode.RECORDING:
             # 버튼 시점에 즉시 정지 (스펙 §2.3) — 이름 입력 중 프레임이 쌓이지 않게
             try:
                 self._proxy.finish_recording()
             except OSError as e:
-                QMessageBox.warning(self, "녹화 정지", f"녹화 정지 실패: {e}")
+                QMessageBox.warning(self, tr("dlg.record_stop.title"), tr("dlg.record_stop.failed", error=e))
                 return
-            self._record_button.setText("녹화 시작")
+            self._record_button.setText(tr("btn.record_start"))
             while True:
-                name, ok = QInputDialog.getText(self, "클립 저장", "클립 이름:")
+                name, ok = QInputDialog.getText(self, tr("dlg.save_clip.title"), tr("dlg.save_clip.prompt"))
                 if ok and name.strip():
                     try:
                         validate_clip_name(self._proxy.clips_dir, name)
                     except ValueError as e:
-                        QMessageBox.warning(self, "클립 저장", str(e))
+                        QMessageBox.warning(self, tr("dlg.save_clip.title"), str(e))
                         continue  # 이름 재입력
                     self._proxy.save_recording(name.strip())
                     self._refresh_clips()
                     return
                 answer = QMessageBox.question(
-                    self, "클립 저장", "녹화를 저장하지 않고 버릴까요?"
+                    self, tr("dlg.save_clip.title"), tr("dlg.save_clip.discard")
                 )
                 if answer == QMessageBox.StandardButton.Yes:
                     self._proxy.discard_recording()
@@ -257,20 +258,20 @@ class MainWindow(QMainWindow):
 
     def _on_save_trim(self) -> None:
         if self._timeline_data is None:
-            QMessageBox.information(self, "구간 저장", "클립을 먼저 선택하세요.")
+            QMessageBox.information(self, tr("dlg.trim.title"), tr("dlg.trim.select_first"))
             return
         start_ms, end_ms = self._timeline.trim_range()
         frames = trim(self._timeline_data, start_ms, end_ms)
         if not frames:
-            QMessageBox.warning(self, "구간 저장", "선택 구간에 프레임이 없습니다.")
+            QMessageBox.warning(self, tr("dlg.trim.title"), tr("dlg.trim.empty"))
             return
-        name, ok = QInputDialog.getText(self, "구간 저장", "새 클립 이름:")
+        name, ok = QInputDialog.getText(self, tr("dlg.trim.title"), tr("dlg.trim.prompt"))
         if not ok or not name.strip():
             return
         try:
             path = validate_clip_name(self._proxy.clips_dir, name)
         except ValueError as e:
-            QMessageBox.warning(self, "구간 저장", str(e))
+            QMessageBox.warning(self, tr("dlg.trim.title"), str(e))
             return
         save_frames(frames, path)
         self._refresh_clips()
@@ -296,7 +297,7 @@ class MainWindow(QMainWindow):
             if paused:
                 self._proxy.end_scrub()  # 재개 실패 — 일시정지 완전 해제
             QMessageBox.warning(
-                self, "재생", "클립을 재생할 수 없습니다 (빈 파일 또는 녹화 중)."
+                self, tr("dlg.play.title"), tr("dlg.play.failed")
             )
 
     def _on_rename(self) -> None:
@@ -307,14 +308,14 @@ class MainWindow(QMainWindow):
         if info is None:
             return
         name, ok = QInputDialog.getText(
-            self, "이름 변경", "새 이름:", text=info.name
+            self, tr("dlg.rename.title"), tr("dlg.rename.prompt"), text=info.name
         )
         if not ok or not name.strip():
             return
         try:
             rename_clip(self._proxy.clips_dir, info.name, name)
         except ValueError as e:
-            QMessageBox.warning(self, "이름 변경", str(e))
+            QMessageBox.warning(self, tr("dlg.rename.title"), str(e))
             return
         self._refresh_clips()
 
@@ -326,7 +327,7 @@ class MainWindow(QMainWindow):
         if info is None:
             return
         answer = QMessageBox.question(
-            self, "삭제", f"클립 {info.name}을(를) 삭제할까요?"
+            self, tr("dlg.delete.title"), tr("dlg.delete.confirm", name=info.name)
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
@@ -341,27 +342,28 @@ class MainWindow(QMainWindow):
     def _poll(self) -> None:
         proxy = self._proxy
         if proxy.bind_error:
-            self._recv_label.setText(f"오류: {proxy.bind_error}")
+            self._recv_label.setText(tr("label.error", error=proxy.bind_error))
             self._recv_label.setStyleSheet("color: #ff6b6b;")
         else:
             hz, since = proxy.receive_stats()
             if since is None:
-                self._recv_label.setText("수신: 없음 (아이폰 미연결)")
+                self._recv_label.setText(tr("label.recv_none"))
                 self._recv_label.setStyleSheet("color: #9a9a9a;")
             elif since > 0.5:
-                self._recv_label.setText(f"수신: 끊김 ({since:.1f}초 전)")
+                self._recv_label.setText(tr("label.recv_stale", seconds=since))
                 self._recv_label.setStyleSheet("color: #ff6b6b;")
             else:
-                self._recv_label.setText(f"수신: {hz} Hz")
+                self._recv_label.setText(tr("label.recv_hz", hz=hz))
                 self._recv_label.setStyleSheet("color: #6dd17c;")
         mode = proxy.mode
         paused = self._timeline.is_paused()
         if paused:
-            self._mode_label.setText("모드: 일시정지")
+            self._mode_label.setText(tr("label.mode", mode=tr("mode.paused")))
         else:
-            self._mode_label.setText(f"모드: {MODE_NAMES[mode]}")
+            self._mode_label.setText(tr("label.mode", mode=tr(MODE_KEYS[mode])))
         self._forward_label.setText(
-            f"전달: {self._config.forward_host}:{self._config.forward_port}"
+            tr("label.forward", host=self._config.forward_host,
+               port=self._config.forward_port)
         )
         playing = mode is Mode.PLAYING
         if self._was_playing and not playing:
