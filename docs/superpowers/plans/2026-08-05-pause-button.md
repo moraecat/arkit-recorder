@@ -122,9 +122,50 @@ rtk git add arkit_recorder/qt
 rtk git commit -m 'feat: 일시정지 상태 버튼'
 ```
 
+---
+
+### Task 2: 스크럽 릴리즈 = 항상 일시정지
+
+(추가 피드백: 타임라인 클릭 시 해당 프레임으로 이동하며 일시정지 모드로. 라이브 복귀는 [정지]로 일원화)
+
+**Files:**
+- Modify: `arkit_recorder/qt/timeline_widget.py`
+
+- [ ] **Step 1: mouseReleaseEvent 교체**
+
+```python
+    def mouseReleaseEvent(self, event) -> None:
+        if self._dragging == "scrub":
+            # 스크럽을 놓으면 항상 일시정지 유지 (킵얼라이브 계속 = 프레임 고정)
+            # 라이브 복귀는 [정지] 버튼으로
+            self._paused = True
+        self._dragging = None
+```
+
+- [ ] **Step 2: mousePressEvent 스크럽 분기 단순화** — `_scrub_from_playing` 관련 제거:
+
+```python
+        if self._paused:
+            # 일시정지 중 재탐색 — 이미 SCRUBBING 모드, begin_scrub 불필요
+            self._dragging = "scrub"
+            self._scrub_to(x)
+            return
+        if self._proxy.begin_scrub():
+            self._dragging = "scrub"
+            self._last_scrub_index = -1
+            self._keepalive.start()
+            self._scrub_to(x)
+```
+
+- [ ] **Step 3: 잔재 제거** — `__init__`의 `self._scrub_from_playing = False`, `release_pause`의 `self._scrub_from_playing = False` 줄 삭제. `from ..proxy import Mode` import가 위젯에서 미사용이 되면 제거 (pause_at_playhead는 Mode 미사용 — grep으로 확인).
+
+- [ ] **Step 4: 검증** — `python -m pytest tests/ -v` (92개) + `py -3.11 -c "import arkit_recorder.qt.timeline_widget; print('import ok')"`
+
+- [ ] **Step 5: 커밋** — `rtk git add arkit_recorder/qt/timeline_widget.py && rtk git commit -m '피처: 스크럽 릴리즈를 항상 일시정지로'` (한글 메시지: `feat: 스크럽 릴리즈를 항상 일시정지로`)
+
 ## 수동 스모크 (사용자)
 
 1. 재생 중 [일시정지] → 현재 프레임 고정(체크 표시), 다시 클릭 → 그 위치부터 재개
-2. 재생 중 타임라인 스크럽 → 놓으면 [일시정지] 자동 체크
+2. 타임라인 클릭/스크럽 (라이브·재생 무관) → 놓으면 해당 프레임 고정 + [일시정지] 자동 체크
 3. 일시정지 중 [정지] → 라이브 복귀 + 체크 해제
 4. 비재생 상태에서 [일시정지] 클릭 → 무동작 (체크 안 됨, 버튼 비활성)
