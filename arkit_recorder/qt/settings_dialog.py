@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..config import Config, save_config
-from ..i18n import current_language, tr
+from ..i18n import tr
 
 
 def _parse_port(text: str, label: str) -> int:
