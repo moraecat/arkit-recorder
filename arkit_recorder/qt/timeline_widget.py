@@ -91,6 +91,24 @@ class TimelineWidget(QWidget):
         if end:
             self._proxy.end_scrub()
 
+    def pause_at_playhead(self) -> bool:
+        # 재생 중 현재 위치에서 일시정지 (버튼용) — 스크럽 일시정지와 동일 상태로 진입
+        if self._data is None or not self._data.frames:
+            return False
+        if not self._proxy.begin_scrub():
+            return False
+        index = frame_index_at(self._data, self._playhead_ms)
+        if index < 0:
+            index = 0
+        self._last_scrub_index = index
+        t_ms, packet = self._data.frames[index]
+        self._proxy.scrub_frame(packet)
+        self._playhead_ms = t_ms
+        self._paused = True
+        self._keepalive.start()
+        self.update()
+        return True
+
     # -- 좌표 변환 ------------------------------------------
 
     def _span_ms(self) -> int:

@@ -116,6 +116,13 @@ class MainWindow(QMainWindow):
             style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
         )
         self._play_button.clicked.connect(self._on_play)
+        self._pause_button = QPushButton("일시정지")
+        self._pause_button.setIcon(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaPause)
+        )
+        self._pause_button.setCheckable(True)
+        self._pause_button.setEnabled(False)
+        self._pause_button.clicked.connect(self._on_pause)
         self._stop_button = QPushButton("정지")
         self._stop_button.setIcon(
             style.standardIcon(QStyle.StandardPixmap.SP_MediaStop)
@@ -128,6 +135,7 @@ class MainWindow(QMainWindow):
         )
         self._loop_button.setCheckable(True)
         controls.addWidget(self._play_button)
+        controls.addWidget(self._pause_button)
         controls.addWidget(self._stop_button)
         controls.addWidget(self._loop_button)
         controls.addStretch(1)
@@ -218,6 +226,18 @@ class MainWindow(QMainWindow):
             self._timeline.set_curve(None)  # 활동량
         else:
             self._timeline.set_curve(self._curve_combo.currentText())
+
+    def _on_pause(self, checked: bool) -> None:
+        if checked:
+            # 재생 중에만 일시정지 진입 가능
+            if self._proxy.mode is Mode.PLAYING:
+                if not self._timeline.pause_at_playhead():
+                    self._pause_button.setChecked(False)
+            else:
+                self._pause_button.setChecked(False)
+        else:
+            if self._timeline.is_paused():
+                self._on_play()  # 일시정지 해제 = 그 위치부터 재개
 
     def _on_stop(self) -> None:
         if self._timeline.is_paused():
@@ -352,6 +372,9 @@ class MainWindow(QMainWindow):
             self._stopped_by_user = False
         self._was_playing = playing
         busy = mode is Mode.PLAYING or (mode is Mode.SCRUBBING and not paused)
+        # clicked는 사용자 클릭에만 발화하므로 setChecked와 충돌 없음
+        self._pause_button.setChecked(paused)
+        self._pause_button.setEnabled(mode is Mode.PLAYING or paused)
         self._stop_button.setEnabled(mode is Mode.PLAYING or paused)
         self._play_button.setEnabled(not busy)
         self._record_button.setEnabled(not busy and not paused)
