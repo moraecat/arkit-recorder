@@ -1,6 +1,6 @@
 # ARKit Recorder
 
-아이폰 페이스 트래킹(iFacialMocap / FaceMotion3D)의 **신호 자체를 녹화해뒀다가,
+아이폰 페이스 트래킹(iFacialMocap)의 **신호 자체를 녹화해뒀다가,
 아이폰 없이 그대로 재생 송출**하는 상시 실행 UDP 프록시입니다.
 
 트래킹 앱이 보내는 iFacialMocap 프로토콜 패킷을 원본 그대로 기록하고 원래
