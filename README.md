@@ -1,6 +1,8 @@
 
 # ARKit Recorder
 
+**한국어** | [English](README.en.md) | [日本語](README.ja.md)
+
 <img width="1440" height="1440" alt="arkit-recorder" src="https://github.com/user-attachments/assets/68c2aec8-ee43-4c9c-83ed-8b188bcdcda6" />
 
 아이폰 페이스 트래킹(iFacialMocap)의 **신호 자체를 녹화해뒀다가,
@@ -65,18 +67,20 @@ python main.py
 
 ## 요구사항
 
-- Windows, Python 3.11+ (exe는 파이썬 불필요)
-- PySide6 (GUI). 코어 로직은 표준 라이브러리만 사용
-- iFacialMocap 프로토콜로 송신하는 트래킹 앱 (iFacialMocap, FaceMotion3D 등)
+- Windows PC (exe는 별도 설치 없이 단독 실행)
+- ARKit 페이스 트래킹이 되는 아이폰 + iFacialMocap 프로토콜 송신 앱
+  (iFacialMocap, FaceMotion3D 등)
+- iFacialMocap 프로토콜 수신 앱 (Warudo, VSeeFace, VNyan 등)
 
-## 개발
+## 개발 (소스 실행)
+
+Python 3.11+ 와 PySide6가 필요합니다 (`pip install -r requirements.txt`).
+코어 로직은 표준 라이브러리만 사용하며, 테스트는 PySide6 없이 돌아갑니다.
 
 ```
-python -m pytest tests/ -v        # 테스트 (92개, PySide6 불필요)
+python -m pytest tests/ -v        # 테스트 (92개)
 pyinstaller --onefile --windowed --name arkit-recorder main.py   # exe 빌드
 ```
-
-설계 문서는 `docs/superpowers/specs/`에 있습니다.
 
 ## 라이선스
 
