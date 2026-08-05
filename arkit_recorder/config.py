@@ -13,6 +13,7 @@ class Config:
     clips_dir: str = "clips"
     crossfade_live_ms: int = 300
     crossfade_loop_ms: int = 500
+    language: str = "auto"
 
 
 def load_config(path: Path) -> Config:

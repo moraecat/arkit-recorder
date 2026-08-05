@@ -5,6 +5,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from .i18n import tr
+
 TAIL_BYTES = 4096  # 길이 계산 시 파일 끝에서 읽는 최대 바이트
 
 
@@ -67,14 +69,14 @@ def list_clips(clips_dir: Path) -> list[ClipInfo]:
 def validate_clip_name(clips_dir: Path, name: str) -> Path:
     name = name.strip()
     if not name:
-        raise ValueError("클립 이름이 비어 있습니다")
+        raise ValueError(tr("err.name_empty"))
     if name.startswith("_"):
-        raise ValueError("밑줄로 시작하는 이름은 사용할 수 없습니다")
+        raise ValueError(tr("err.name_underscore"))
     if "/" in name or "\\" in name or ".." in name:
-        raise ValueError("이름에 경로 문자를 사용할 수 없습니다")
+        raise ValueError(tr("err.name_pathchars"))
     path = clips_dir / (name + ".jsonl")
     if path.exists():
-        raise ValueError(f"같은 이름의 클립이 이미 있습니다: {name}")
+        raise ValueError(tr("err.name_taken", name=name))
     return path
 
 
@@ -82,7 +84,7 @@ def rename_clip(clips_dir: Path, old_name: str, new_name: str) -> Path:
     new_path = validate_clip_name(clips_dir, new_name)
     old_path = clips_dir / (old_name + ".jsonl")
     if not old_path.exists():
-        raise ValueError(f"클립을 찾을 수 없습니다: {old_name}")
+        raise ValueError(tr("err.clip_missing", name=old_name))
     old_path.rename(new_path)
     return new_path
 

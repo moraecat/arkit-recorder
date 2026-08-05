@@ -8,6 +8,7 @@ from enum import Enum
 from pathlib import Path
 
 from .config import Config
+from .i18n import tr
 from .player import ClipPlayer
 from .protocol import Frame, blend_frames, parse_packet, serialize_frame
 from .recorder import ClipRecorder
@@ -69,10 +70,7 @@ class FaceProxy:
             sock.settimeout(0.5)
             sock.bind(("0.0.0.0", port))
         except OSError as e:
-            self.bind_error = (
-                f"포트 {port} 바인드 실패 "
-                f"(다른 프로그램이 사용 중일 수 있음): {e}"
-            )
+            self.bind_error = tr("err.bind_failed", port=port, error=e)
             return False
         self.bind_error = None
         self._recv_socket = sock
@@ -323,7 +321,7 @@ class FaceProxy:
     def apply_config(self, new: Config) -> str | None:
         with self._mode_lock:
             if self._mode is not Mode.PASSTHROUGH:
-                return "패스스루 상태에서만 설정을 적용할 수 있습니다"
+                return tr("err.apply_not_passthrough")
         if new.listen_port != self.bound_port:
             old_bound = self.bound_port
             self._stop_listener()
@@ -331,12 +329,9 @@ class FaceProxy:
                 error = self.bind_error
                 if old_bound is not None and self._start_listener(old_bound):
                     # 롤백 성공 -- _start_listener가 bind_error를 None으로 복원
-                    return f"수신 포트 변경 실패, 이전 포트 유지: {error}"
+                    return tr("err.port_change_kept", error=error)
                 self.bound_port = None
-                return (
-                    f"수신 포트 변경 실패, 이전 포트 복구도 실패 "
-                    f"(수신이 중단됨, 설정에서 포트를 다시 지정하세요): {error}"
-                )
+                return tr("err.port_change_lost", error=error)
         # 인플레이스 갱신 -- main.py가 같은 Config 인스턴스를 GUI와 공유함
         # config에는 사용자가 요청한 값을 저장한다 (0이면 매 시작마다 OS 할당 --
         # GUI 다이얼로그는 1~65535만 허용하므로 실사용에서 0은 테스트 전용)
